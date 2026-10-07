@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Basketball Game - V1</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="loading">Loading court...</div>
+  <div id="hud">
+    <div class="scorebox">
+      <span>HOME</span>
+      <strong id="homeScore">0</strong>
+    </div>
+    <div class="clock">
+      <span id="gameClock">02:00</span>
+      <small id="status">CHECK BALL</small>
+    </div>
+    <div class="scorebox">
+      <span>AWAY</span>
+      <strong id="awayScore">0</strong>
+    </div>
+  </div>
+
+  <div id="controls">
+    <b>WASD</b> Move &nbsp; <b>SHIFT</b> Sprint &nbsp; <b>SPACE</b> Shoot &nbsp;
+    <b>R</b> Reset ball
+  </div>
+
+  <div id="shotMeter" class="hidden">
+    <div class="meter-label">SHOT</div>
+    <div class="meter"><div id="meterFill"></div><div class="perfect"></div></div>
+  </div>
+
+  <div id="message" class="hidden"></div>
+
+  <div id="gameOver" class="hidden">
+    <h1 id="finalTitle">GAME OVER</h1>
+    <p id="finalScore">0 - 0</p>
+    <button id="restart">PLAY AGAIN</button>
+  </div>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>
