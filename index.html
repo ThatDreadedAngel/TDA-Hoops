@@ -2,45 +2,133 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>3D Basketball Game - V1</title>
-  <link rel="stylesheet" href="style.css">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>Court Clash — 3D Basketball</title>
+
+  <link
+    rel="stylesheet"
+    href="style.css"
+  >
 </head>
+
 <body>
-  <div id="loading">Loading court...</div>
+
+  <!-- Loading screen -->
+  <div id="loading">
+    Loading court...
+  </div>
+
+  <!-- Main scoreboard -->
   <div id="hud">
+
     <div class="scorebox">
       <span>HOME</span>
       <strong id="homeScore">0</strong>
     </div>
+
     <div class="clock">
       <span id="gameClock">02:00</span>
-      <small id="status">CHECK BALL</small>
+      <small id="status">
+        CHECK BALL
+      </small>
     </div>
+
     <div class="scorebox">
       <span>AWAY</span>
       <strong id="awayScore">0</strong>
     </div>
+
   </div>
 
+  <!-- Controls -->
   <div id="controls">
-    <b>WASD</b> Move &nbsp; <b>SHIFT</b> Sprint &nbsp; <b>SPACE</b> Shoot &nbsp;
-    <b>R</b> Reset ball
+    <b>WASD</b> / <b>ARROWS</b> MOVE
+    &nbsp; • &nbsp;
+
+    <b>SHIFT</b> SPRINT
+    &nbsp; • &nbsp;
+
+    <b>SPACE</b> SHOOT
+    &nbsp; • &nbsp;
+
+    <b>Q</b> CROSSOVER
+    &nbsp; • &nbsp;
+
+    <b>E</b> BEHIND BACK
+    &nbsp; • &nbsp;
+
+    <b>R</b> RESET
+    &nbsp; • &nbsp;
+
+    <b>ESC</b> PAUSE
   </div>
 
-  <div id="shotMeter" class="hidden">
-    <div class="meter-label">SHOT</div>
-    <div class="meter"><div id="meterFill"></div><div class="perfect"></div></div>
+  <!-- Shot meter -->
+  <div
+    id="shotMeter"
+    class="hidden"
+  >
+    <div class="meter-label">
+      SHOT
+    </div>
+
+    <div class="meter">
+      <div id="meterFill"></div>
+      <div class="perfect"></div>
+    </div>
   </div>
 
-  <div id="message" class="hidden"></div>
+  <!-- Gameplay messages -->
+  <div
+    id="message"
+    class="hidden"
+  ></div>
 
-  <div id="gameOver" class="hidden">
-    <h1 id="finalTitle">GAME OVER</h1>
-    <p id="finalScore">0 - 0</p>
-    <button id="restart">PLAY AGAIN</button>
+  <!-- Game over -->
+  <div
+    id="gameOver"
+    class="hidden"
+  >
+
+    <h1 id="finalTitle">
+      GAME OVER
+    </h1>
+
+    <p id="finalScore">
+      0 - 0
+    </p>
+
+    <button id="restart">
+      PLAY AGAIN
+    </button>
+
   </div>
 
-  <script type="module" src="game.js"></script>
+  <!--
+    IMPORTANT:
+    game.js creates the following dynamically:
+
+    - Main menu
+    - Shot clock
+    - Possession indicator
+    - Crowd status
+    - Pause screen
+    - 3D court
+    - Players
+    - Basketball
+    - Hoops
+    - Crowd
+  -->
+
+  <script
+    type="module"
+    src="./game.js"
+  ></script>
+
 </body>
 </html>
