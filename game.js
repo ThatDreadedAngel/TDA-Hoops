@@ -1,30 +1,28 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 
 /*
-============================================================
-COURT CLASH
-3D BASKETBALL V3
-============================================================
+===========================================================
+COURT CLASH — 3D BASKETBALL 5V5
+===========================================================
 
-Controls
-WASD / Arrow Keys  - Move
-SHIFT              - Sprint
-SPACE              - Hold/release shot
-Q                  - Crossover
-E                  - Behind-the-back
-R                  - Reset ball
-ESC                - Pause
+CONTROLS
+WASD / ARROWS = Move
+SHIFT         = Sprint
+SPACE         = Hold / Release Shot
+F             = Pass
+Q             = Crossover
+E             = Behind The Back
+R             = Reset Possession
+ESC           = Pause
 
-This file is designed to work with the HTML/CSS supplied
-in the project.
-============================================================
+===========================================================
 */
 
-// ============================================================
+// ---------------------------------------------------------
 // DOM
-// ============================================================
+// ---------------------------------------------------------
 
-const $ = (id) => document.getElementById(id);
+const $ = id => document.getElementById(id);
 
 const loading = $("loading");
 const homeScoreEl = $("homeScore");
@@ -39,31 +37,33 @@ const finalTitle = $("finalTitle");
 const finalScore = $("finalScore");
 const restartButton = $("restart");
 
-// ============================================================
+// ---------------------------------------------------------
 // CONFIG
-// ============================================================
+// ---------------------------------------------------------
 
-const COURT_WIDTH = 18;
-const COURT_LENGTH = 30;
+const COURT_W = 18;
+const COURT_L = 30;
 
 const GAME_LENGTH = 120;
-const SHOT_CLOCK_MAX = 24;
+const SHOT_CLOCK = 24;
 
-const PLAYER_SPEED = 5.3;
-const SPRINT_SPEED = 8.0;
+const PLAYER_SPEED = 5.2;
+const SPRINT_SPEED = 7.8;
 
-const PLAYER_RADIUS = 0.65;
-
-const BALL_RADIUS = 0.24;
-
+const BALL_R = .24;
 const HOOP_Y = 3.05;
 
-const HOME_HOOP_Z = -COURT_LENGTH / 2 + 1.15;
-const AWAY_HOOP_Z = COURT_LENGTH / 2 - 1.15;
+const HOME_HOOP_Z = -14.0;
+const AWAY_HOOP_Z = 14.0;
 
-// ============================================================
+const HOME_COLOR = 0x1976d2;
+const AWAY_COLOR = 0xd32f2f;
+
+const clock = new THREE.Clock();
+
+// ---------------------------------------------------------
 // STATE
-// ============================================================
+// ---------------------------------------------------------
 
 const state = {
   running: false,
@@ -71,62 +71,52 @@ const state = {
   ended: false,
 
   gameTime: GAME_LENGTH,
-  shotClock: SHOT_CLOCK_MAX,
+  shotClock: SHOT_CLOCK,
 
-  homeScore: 0,
-  awayScore: 0,
+  home: 0,
+  away: 0,
 
   possession: "home",
 
-  ballOwner: "player",
-
-  shooting: false,
-  shotCharge: 0,
-
+  ballOwner: null,
   ballState: "held",
 
-  shotTime: 0,
-  shotDuration: 0,
+  shooter: null,
 
-  scoreMarginHistory: 0,
+  shot: null,
 
-  crowdIntensity: 0.2,
-  crowdTarget: 0.2,
+  crowd: .25,
+  crowdTarget: .25,
 
-  crowdStanding: 0,
-  crowdTargetStanding: 0,
+  standing: 0,
+  standingTarget: 0,
 
-  chantCooldown: 0,
+  messageTimer: 0,
+  chantTimer: 0,
 
-  messageTime: 0,
+  lastMargin: 0,
 
-  lastMove: "",
-
-  moveCooldown: 0,
-
-  audioStarted: false,
-
-  lastTime: performance.now()
+  audioStarted: false
 };
 
-// ============================================================
-// THREE.JS
-// ============================================================
+// ---------------------------------------------------------
+// THREE
+// ---------------------------------------------------------
 
 const scene = new THREE.Scene();
 
-scene.background = new THREE.Color(0x090e16);
+scene.background = new THREE.Color(0x080c14);
 
 scene.fog = new THREE.Fog(
-  0x090e16,
-  35,
+  0x080c14,
+  38,
   85
 );
 
 const camera = new THREE.PerspectiveCamera(
-  62,
-  window.innerWidth / window.innerHeight,
-  0.1,
+  60,
+  innerWidth / innerHeight,
+  .1,
   150
 );
 
@@ -134,323 +124,184 @@ const renderer = new THREE.WebGLRenderer({
   antialias: true
 });
 
-renderer.setSize(
-  window.innerWidth,
-  window.innerHeight
-);
-
-renderer.setPixelRatio(
-  Math.min(window.devicePixelRatio, 2)
-);
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type =
-  THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-renderer.outputColorSpace =
-  THREE.SRGBColorSpace;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 document.body.appendChild(renderer.domElement);
 
-// ============================================================
+// ---------------------------------------------------------
 // LIGHTING
-// ============================================================
+// ---------------------------------------------------------
 
 scene.add(
   new THREE.HemisphereLight(
-    0xbfd7ff,
-    0x161616,
-    2.2
+    0xd8e7ff,
+    0x141414,
+    2
   )
 );
 
-const keyLight =
-  new THREE.DirectionalLight(
-    0xffffff,
-    3
-  );
-
-keyLight.position.set(
-  12,
-  20,
-  8
+const sun = new THREE.DirectionalLight(
+  0xffffff,
+  3.2
 );
 
-keyLight.castShadow = true;
+sun.position.set(10, 20, 10);
+sun.castShadow = true;
 
-keyLight.shadow.mapSize.set(
-  2048,
-  2048
-);
+sun.shadow.mapSize.width = 2048;
+sun.shadow.mapSize.height = 2048;
 
-scene.add(keyLight);
+scene.add(sun);
 
-// Arena lights
-
-for (const x of [-10, 0, 10]) {
-  for (const z of [-16, 16]) {
-    const light =
-      new THREE.PointLight(
-        0xffffff,
-        12,
-        35
-      );
-
-    light.position.set(
-      x,
-      10,
-      z
+for (const x of [-11, 0, 11]) {
+  for (const z of [-18, 0, 18]) {
+    const light = new THREE.PointLight(
+      0xffffff,
+      8,
+      32
     );
 
+    light.position.set(x, 11, z);
     scene.add(light);
   }
 }
 
-// ============================================================
-// MATERIALS
-// ============================================================
+// ---------------------------------------------------------
+// MATERIAL HELPERS
+// ---------------------------------------------------------
 
-const courtMaterial =
-  new THREE.MeshStandardMaterial({
-    color: 0xb86d3e,
-    roughness: 0.72
+function mat(color, roughness = .7) {
+  return new THREE.MeshStandardMaterial({
+    color,
+    roughness
   });
+}
 
-const lineMaterial =
-  new THREE.MeshBasicMaterial({
-    color: 0xffffff
-  });
+const courtMat = mat(0xb96d3e);
+const floorMat = mat(0x111720);
+const whiteMat = new THREE.MeshBasicMaterial({
+  color: 0xffffff
+});
 
-const darkMaterial =
-  new THREE.MeshStandardMaterial({
-    color: 0x151a22,
-    roughness: 0.8
-  });
+// ---------------------------------------------------------
+// ARENA FLOOR
+// ---------------------------------------------------------
 
-// ============================================================
-// ARENA
-// ============================================================
+const arena = new THREE.Mesh(
+  new THREE.BoxGeometry(64, .4, 70),
+  floorMat
+);
 
-const arenaFloor =
-  new THREE.Mesh(
-    new THREE.BoxGeometry(
-      62,
-      0.4,
-      68
-    ),
-    darkMaterial
-  );
+arena.position.y = -.45;
+arena.receiveShadow = true;
 
-arenaFloor.position.y = -0.45;
+scene.add(arena);
 
-arenaFloor.receiveShadow = true;
-
-scene.add(arenaFloor);
-
-// ============================================================
+// ---------------------------------------------------------
 // COURT
-// ============================================================
+// ---------------------------------------------------------
 
-const court =
-  new THREE.Mesh(
-    new THREE.BoxGeometry(
-      COURT_WIDTH,
-      0.28,
-      COURT_LENGTH
-    ),
-    courtMaterial
-  );
+const court = new THREE.Mesh(
+  new THREE.BoxGeometry(
+    COURT_W,
+    .28,
+    COURT_L
+  ),
+  courtMat
+);
 
-court.position.y = -0.14;
-
+court.position.y = -.14;
 court.receiveShadow = true;
 
 scene.add(court);
 
-function addCourtLine(
-  width,
-  depth,
-  x,
-  z
-) {
-  const line =
-    new THREE.Mesh(
-      new THREE.BoxGeometry(
-        width,
-        0.035,
-        depth
-      ),
-      lineMaterial
-    );
-
-  line.position.set(
-    x,
-    0.025,
-    z
+function line(w, d, x, z) {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(w, .035, d),
+    whiteMat
   );
 
-  scene.add(line);
+  mesh.position.set(x, .025, z);
+  scene.add(mesh);
+
+  return mesh;
 }
 
-// Sidelines
+line(.08, COURT_L, -COURT_W / 2, 0);
+line(.08, COURT_L, COURT_W / 2, 0);
 
-addCourtLine(
-  0.08,
-  COURT_LENGTH,
-  -COURT_WIDTH / 2,
-  0
-);
+line(COURT_W, .08, 0, -COURT_L / 2);
+line(COURT_W, .08, 0, COURT_L / 2);
 
-addCourtLine(
-  0.08,
-  COURT_LENGTH,
-  COURT_WIDTH / 2,
-  0
-);
-
-// Baselines
-
-addCourtLine(
-  COURT_WIDTH,
-  0.08,
-  0,
-  -COURT_LENGTH / 2
-);
-
-addCourtLine(
-  COURT_WIDTH,
-  0.08,
-  0,
-  COURT_LENGTH / 2
-);
-
-// Half court
-
-addCourtLine(
-  COURT_WIDTH,
-  0.08,
-  0,
-  0
-);
+line(COURT_W, .06, 0, 0);
 
 // Center circle
+const centerCircle = new THREE.Mesh(
+  new THREE.RingGeometry(2, 2.06, 64),
+  whiteMat
+);
 
-const centerCircle =
-  new THREE.Mesh(
-    new THREE.RingGeometry(
-      2,
-      2.06,
-      64
-    ),
-    lineMaterial
-  );
-
-centerCircle.rotation.x =
-  -Math.PI / 2;
-
-centerCircle.position.y =
-  0.04;
+centerCircle.rotation.x = -Math.PI / 2;
+centerCircle.position.y = .045;
 
 scene.add(centerCircle);
 
-// ============================================================
+// ---------------------------------------------------------
 // PAINT
-// ============================================================
+// ---------------------------------------------------------
 
-function createPaint(z) {
-  const paint =
-    new THREE.Mesh(
-      new THREE.PlaneGeometry(
-        5.2,
-        5.8
-      ),
-      new THREE.MeshBasicMaterial({
-        color: 0x9d392d,
-        transparent: true,
-        opacity: 0.52,
-        side: THREE.DoubleSide
-      })
-    );
-
-  paint.rotation.x =
-    -Math.PI / 2;
-
-  paint.position.set(
-    0,
-    0.035,
-    z
+function paint(z) {
+  const p = new THREE.Mesh(
+    new THREE.PlaneGeometry(5.2, 5.8),
+    new THREE.MeshBasicMaterial({
+      color: 0x9b3d30,
+      transparent: true,
+      opacity: .55
+    })
   );
 
-  scene.add(paint);
+  p.rotation.x = -Math.PI / 2;
+  p.position.set(0, .04, z);
 
-  addCourtLine(
-    5.2,
-    0.07,
-    0,
-    z - 2.9
-  );
+  scene.add(p);
 
-  addCourtLine(
-    5.2,
-    0.07,
-    0,
-    z + 2.9
-  );
+  line(5.2, .07, 0, z - 2.9);
+  line(5.2, .07, 0, z + 2.9);
 
-  addCourtLine(
-    0.07,
-    5.8,
-    -2.6,
-    z
-  );
-
-  addCourtLine(
-    0.07,
-    5.8,
-    2.6,
-    z
-  );
+  line(.07, 5.8, -2.6, z);
+  line(.07, 5.8, 2.6, z);
 }
 
-createPaint(
-  HOME_HOOP_Z + 2.9
-);
+paint(-11.1);
+paint(11.1);
 
-createPaint(
-  AWAY_HOOP_Z - 2.9
-);
+// ---------------------------------------------------------
+// THREE POINT LINES
+// ---------------------------------------------------------
 
-// ============================================================
-// THREE-POINT ARC
-// ============================================================
-
-function createArc(
-  centerZ,
-  facing
-) {
+function threeLine(centerZ, direction) {
   const points = [];
 
-  const radius = 6.75;
+  const r = 6.75;
 
-  for (
-    let i = 0;
-    i <= 60;
-    i++
-  ) {
-    const t = i / 60;
-
-    const angle =
-      Math.PI * t;
+  for (let i = 0; i <= 64; i++) {
+    const t = i / 64;
+    const angle = Math.PI * t;
 
     points.push(
       new THREE.Vector3(
-        Math.cos(angle) *
-          radius,
-        0.045,
+        Math.cos(angle) * r,
+        .05,
         centerZ +
-          facing *
-            Math.sin(angle) *
-            radius
+          direction *
+          Math.sin(angle) *
+          r
       )
     );
   }
@@ -459,91 +310,212 @@ function createArc(
     new THREE.BufferGeometry()
       .setFromPoints(points);
 
-  const line =
+  scene.add(
     new THREE.Line(
       geometry,
-      lineMaterial
-    );
-
-  scene.add(line);
+      whiteMat
+    )
+  );
 }
 
-createArc(
-  HOME_HOOP_Z + 0.25,
+threeLine(-13.7, 1);
+threeLine(13.7, -1);
+
+// ---------------------------------------------------------
+// HOOPS
+// ---------------------------------------------------------
+
+function makeHoop(z, facing) {
+  const group = new THREE.Group();
+
+  group.position.z = z;
+
+  scene.add(group);
+
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(
+      .18,
+      .25,
+      4.2,
+      16
+    ),
+    mat(0x333941)
+  );
+
+  pole.position.set(
+    0,
+    2,
+    facing * 2
+  );
+
+  pole.castShadow = true;
+
+  group.add(pole);
+
+  const board = new THREE.Mesh(
+    new THREE.BoxGeometry(
+      5.1,
+      3,
+      .18
+    ),
+    mat(0xf3f3f3)
+  );
+
+  board.position.set(
+    0,
+    4.25,
+    facing * .8
+  );
+
+  board.castShadow = true;
+
+  group.add(board);
+
+  const target = new THREE.Mesh(
+    new THREE.BoxGeometry(
+      1.8,
+      1.1,
+      .04
+    ),
+    whiteMat
+  );
+
+  target.position.set(
+    0,
+    4.05,
+    facing * .69
+  );
+
+  group.add(target);
+
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(
+      .75,
+      .075,
+      12,
+      32
+    ),
+    mat(0xff5a1f)
+  );
+
+  rim.rotation.x = Math.PI / 2;
+
+  rim.position.set(
+    0,
+    HOOP_Y,
+    facing * 1.15
+  );
+
+  group.add(rim);
+
+  // Net
+  const netMat = new THREE.LineBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: .55
+  });
+
+  for (let i = 0; i < 14; i++) {
+    const a =
+      i / 14 *
+      Math.PI *
+      2;
+
+    const x = Math.cos(a) * .72;
+    const zz = Math.sin(a) * .72;
+
+    const g =
+      new THREE.BufferGeometry()
+        .setFromPoints([
+          new THREE.Vector3(
+            x,
+            HOOP_Y,
+            facing * 1.15 + zz
+          ),
+          new THREE.Vector3(
+            x * .55,
+            HOOP_Y - .75,
+            facing * 1.15 + zz * .55
+          )
+        ]);
+
+    group.add(
+      new THREE.Line(
+        g,
+        netMat
+      )
+    );
+  }
+
+  return new THREE.Vector3(
+    0,
+    HOOP_Y,
+    z + facing * 1.15
+  );
+}
+
+const homeHoop = makeHoop(
+  HOME_HOOP_Z,
   1
 );
 
-createArc(
-  AWAY_HOOP_Z - 0.25,
+const awayHoop = makeHoop(
+  AWAY_HOOP_Z,
   -1
 );
 
-// ============================================================
-// ARENA SEATING
-// ============================================================
+// ---------------------------------------------------------
+// CROWD
+// ---------------------------------------------------------
 
-const crowd = [];
+const fans = [];
 
-const crowdColors = [
-  0xe53935,
+const fanColors = [
   0x1976d2,
+  0xd32f2f,
   0xffca28,
-  0x8e24aa,
-  0x43a047,
   0xffffff,
+  0x43a047,
+  0x8e24aa,
   0xff7043,
-  0x26a69a,
-  0x37474f
+  0x26a69a
 ];
 
-function createFan(
-  x,
-  y,
-  z,
-  scale = 1
-) {
-  const group =
-    new THREE.Group();
+function createFan(x, y, z, scale = 1) {
+  const group = new THREE.Group();
 
   const shirt =
-    crowdColors[
+    fanColors[
       Math.floor(
         Math.random() *
-          crowdColors.length
+        fanColors.length
       )
     ];
 
-  const body =
-    new THREE.Mesh(
-      new THREE.CapsuleGeometry(
-        0.14 * scale,
-        0.34 * scale,
-        5,
-        8
-      ),
-      new THREE.MeshStandardMaterial({
-        color: shirt
-      })
-    );
+  const body = new THREE.Mesh(
+    new THREE.CapsuleGeometry(
+      .14 * scale,
+      .35 * scale,
+      5,
+      8
+    ),
+    mat(shirt)
+  );
 
   body.position.y =
-    0.34 * scale;
+    .35 * scale;
 
-  const head =
-    new THREE.Mesh(
-      new THREE.SphereGeometry(
-        0.13 * scale,
-        8,
-        8
-      ),
-      new THREE.MeshStandardMaterial({
-        color:
-          0xb87355
-      })
-    );
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(
+      .14 * scale,
+      8,
+      8
+    ),
+    mat(0xb9795d)
+  );
 
   head.position.y =
-    0.72 * scale;
+    .75 * scale;
 
   group.add(body);
   group.add(head);
@@ -556,603 +528,342 @@ function createFan(
 
   scene.add(group);
 
-  crowd.push({
+  fans.push({
     group,
     body,
-
     baseY: y,
-
-    phase:
-      Math.random() *
-      Math.PI *
-      2,
-
-    speed:
-      0.8 +
-      Math.random() *
-        1.5,
-
-    energy: 0,
-
-    standing: false
+    phase: Math.random() * Math.PI * 2,
+    speed: .7 + Math.random() * 1.7
   });
 }
 
 // Back stands
+for (let row = 0; row < 6; row++) {
+  for (let i = 0; i < 36; i++) {
+    const x = -22 + i * 1.25;
 
-for (
-  let row = 0;
-  row < 5;
-  row++
-) {
-  for (
-    let i = 0;
-    i < 34;
-    i++
-  ) {
     createFan(
-      -21 +
-        i * 1.27,
-      row * 0.55,
-      -19 -
-        row * 1.2,
-      1
+      x,
+      row * .55,
+      -19 - row * 1.15
     );
 
     createFan(
-      -21 +
-        i * 1.27,
-      row * 0.55,
-      19 +
-        row * 1.2,
-      1
+      x,
+      row * .55,
+      19 + row * 1.15
     );
   }
 }
 
 // Side stands
+for (let row = 0; row < 4; row++) {
+  for (let i = 0; i < 25; i++) {
+    const z = -14 + i * 1.16;
 
-for (
-  let row = 0;
-  row < 4;
-  row++
-) {
-  for (
-    let i = 0;
-    i < 24;
-    i++
-  ) {
     createFan(
-      -12 -
-        row * 1.25,
-      row * 0.55,
-      -14 +
-        i * 1.22,
-      0.9
+      -12 - row * 1.25,
+      row * .55,
+      z,
+      .9
     );
 
     createFan(
-      12 +
-        row * 1.25,
-      row * 0.55,
-      -14 +
-        i * 1.22,
-      0.9
+      12 + row * 1.25,
+      row * .55,
+      z,
+      .9
     );
   }
 }
 
-// ============================================================
-// SCOREBOARD / ARENA UI
-// ============================================================
+// ---------------------------------------------------------
+// PLAYERS
+// ---------------------------------------------------------
 
-const arenaUI =
-  document.createElement(
-    "div"
-  );
+const players = [];
 
-arenaUI.id =
-  "arenaExtraUI";
+function makePlayer(team, number, role) {
+  const group = new THREE.Group();
 
-arenaUI.innerHTML = `
-  <div id="shotClockBox">
-    <small>SHOT CLOCK</small>
-    <strong id="shotClock">24</strong>
-  </div>
+  const color =
+    team === "home"
+      ? HOME_COLOR
+      : AWAY_COLOR;
 
-  <div id="possessionIndicator">
-    HOME BALL
-  </div>
+  const accent =
+    team === "home"
+      ? 0xffffff
+      : 0xffffff;
 
-  <div id="crowdStatus">
-    CROWD <span id="crowdLevel">QUIET</span>
-  </div>
-
-  <div id="pauseOverlay">
-    <div>
-      <h1>PAUSED</h1>
-      <p>Press ESC to continue</p>
-    </div>
-  </div>
-`;
-
-document.body.appendChild(
-  arenaUI
-);
-
-const shotClockEl =
-  document.getElementById(
-    "shotClock"
-  );
-
-const possessionEl =
-  document.getElementById(
-    "possessionIndicator"
-  );
-
-const crowdLevelEl =
-  document.getElementById(
-    "crowdLevel"
-  );
-
-const pauseOverlay =
-  document.getElementById(
-    "pauseOverlay"
-  );
-
-const extraStyle =
-  document.createElement(
-    "style"
-  );
-
-extraStyle.textContent = `
-#arenaExtraUI {
-  pointer-events:none;
-  user-select:none;
-}
-
-#shotClockBox {
-  position:fixed;
-  right:24px;
-  top:22px;
-  z-index:6;
-  color:#fff;
-  background:rgba(8,8,10,.86);
-  border:1px solid rgba(255,255,255,.2);
-  border-radius:12px;
-  padding:8px 16px;
-  text-align:center;
-  min-width:92px;
-}
-
-#shotClockBox small {
-  display:block;
-  font-size:8px;
-  letter-spacing:2px;
-  opacity:.7;
-}
-
-#shotClockBox strong {
-  display:block;
-  font-size:32px;
-  line-height:1;
-  margin-top:3px;
-  font-variant-numeric:tabular-nums;
-}
-
-#possessionIndicator {
-  position:fixed;
-  left:50%;
-  top:112px;
-  transform:translateX(-50%);
-  z-index:6;
-  color:#fff;
-  background:rgba(8,8,10,.72);
-  border-radius:999px;
-  padding:6px 14px;
-  font-size:9px;
-  font-weight:900;
-  letter-spacing:1.5px;
-}
-
-#crowdStatus {
-  position:fixed;
-  left:20px;
-  top:20px;
-  z-index:6;
-  color:#fff;
-  background:rgba(8,8,10,.72);
-  border-radius:9px;
-  padding:8px 12px;
-  font-size:9px;
-  letter-spacing:1px;
-}
-
-#crowdStatus span {
-  color:#f7b731;
-  font-weight:900;
-}
-
-#pauseOverlay {
-  position:fixed;
-  inset:0;
-  z-index:40;
-  display:none;
-  place-items:center;
-  background:rgba(0,0,0,.72);
-  color:white;
-  text-align:center;
-}
-
-#pauseOverlay.active {
-  display:grid;
-}
-
-#pauseOverlay h1 {
-  font-size:56px;
-  margin:0;
-}
-
-#pauseOverlay p {
-  opacity:.7;
-}
-
-@media(max-width:700px) {
-  #shotClockBox {
-    right:10px;
-    top:70px;
-  }
-
-  #crowdStatus {
-    display:none;
-  }
-
-  #possessionIndicator {
-    top:112px;
-  }
-}
-`;
-
-document.head.appendChild(
-  extraStyle
-);
-
-// ============================================================
-// BASKETBALL
-// ============================================================
-
-const ball =
-  new THREE.Mesh(
-    new THREE.SphereGeometry(
-      BALL_RADIUS,
-      24,
-      24
+  const body = new THREE.Mesh(
+    new THREE.CapsuleGeometry(
+      .43,
+      1.12,
+      6,
+      12
     ),
-    new THREE.MeshStandardMaterial({
-      color:0xd86f28,
-      roughness:.7
-    })
+    mat(color)
   );
+
+  body.position.y = 1.2;
+  body.castShadow = true;
+
+  group.add(body);
+
+  const shorts = new THREE.Mesh(
+    new THREE.BoxGeometry(
+      .82,
+      .45,
+      .5
+    ),
+    mat(color)
+  );
+
+  shorts.position.y = .65;
+
+  group.add(shorts);
+
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(
+      .34,
+      16,
+      16
+    ),
+    mat(0xb97858)
+  );
+
+  head.position.y = 2.18;
+  head.castShadow = true;
+
+  group.add(head);
+
+  const headband = new THREE.Mesh(
+    new THREE.TorusGeometry(
+      .345,
+      .035,
+      8,
+      20
+    ),
+    mat(accent)
+  );
+
+  headband.rotation.x =
+    Math.PI / 2;
+
+  headband.position.y =
+    2.19;
+
+  group.add(headband);
+
+  scene.add(group);
+
+  const p = {
+    mesh: group,
+
+    team,
+    number,
+    role,
+
+    velocity:
+      new THREE.Vector3(),
+
+    target:
+      new THREE.Vector3(),
+
+    stamina: 1,
+
+    dribbleTime:
+      Math.random() * 10,
+
+    action: "idle",
+
+    actionTime: 0,
+
+    cooldown: 0,
+
+    hasBall: false,
+
+    homeSpot:
+      new THREE.Vector3(),
+
+    aiTimer:
+      Math.random() * 2
+  };
+
+  players.push(p);
+
+  return p;
+}
+
+// Home
+const homePG = makePlayer(
+  "home",
+  1,
+  "PG"
+);
+
+const homeSG = makePlayer(
+  "home",
+  2,
+  "SG"
+);
+
+const homeSF = makePlayer(
+  "home",
+  3,
+  "SF"
+);
+
+const homePF = makePlayer(
+  "home",
+  4,
+  "PF"
+);
+
+const homeC = makePlayer(
+  "home",
+  5,
+  "C"
+);
+
+// Away
+const awayPG = makePlayer(
+  "away",
+  1,
+  "PG"
+);
+
+const awaySG = makePlayer(
+  "away",
+  2,
+  "SG"
+);
+
+const awaySF = makePlayer(
+  "away",
+  3,
+  "SF"
+);
+
+const awayPF = makePlayer(
+  "away",
+  4,
+  "PF"
+);
+
+const awayC = makePlayer(
+  "away",
+  5,
+  "C"
+);
+
+const homeTeam = [
+  homePG,
+  homeSG,
+  homeSF,
+  homePF,
+  homeC
+];
+
+const awayTeam = [
+  awayPG,
+  awaySG,
+  awaySF,
+  awayPF,
+  awayC
+];
+
+function setFormation() {
+  homePG.homeSpot.set(
+    0,
+    0,
+    7
+  );
+
+  homeSG.homeSpot.set(
+    -5.2,
+    0,
+    5
+  );
+
+  homeSF.homeSpot.set(
+    5.2,
+    0,
+    5
+  );
+
+  homePF.homeSpot.set(
+    -3.4,
+    0,
+    1.5
+  );
+
+  homeC.homeSpot.set(
+    3.4,
+    0,
+    1.5
+  );
+
+  awayPG.homeSpot.set(
+    0,
+    0,
+    2
+  );
+
+  awaySG.homeSpot.set(
+    -5.2,
+    0,
+    -1
+  );
+
+  awaySF.homeSpot.set(
+    5.2,
+    0,
+    -1
+  );
+
+  awayPF.homeSpot.set(
+    -3.4,
+    0,
+    -4
+  );
+
+  awayC.homeSpot.set(
+    3.4,
+    0,
+    -4
+  );
+}
+
+setFormation();
+
+// ---------------------------------------------------------
+// BALL
+// ---------------------------------------------------------
+
+const ball = new THREE.Mesh(
+  new THREE.SphereGeometry(
+    BALL_R,
+    24,
+    24
+  ),
+  mat(0xd87528)
+);
 
 ball.castShadow = true;
 
 scene.add(ball);
 
-// ============================================================
-// PLAYERS
-// ============================================================
-
-function createPlayer(
-  color,
-  accent
-) {
-  const group =
-    new THREE.Group();
-
-  const body =
-    new THREE.Mesh(
-      new THREE.CapsuleGeometry(
-        0.46,
-        1.15,
-        6,
-        12
-      ),
-      new THREE.MeshStandardMaterial({
-        color,
-        roughness:.65
-      })
-    );
-
-  body.position.y =
-    1.18;
-
-  body.castShadow = true;
-
-  group.add(body);
-
-  const head =
-    new THREE.Mesh(
-      new THREE.SphereGeometry(
-        0.35,
-        20,
-        20
-      ),
-      new THREE.MeshStandardMaterial({
-        color:0xb97858
-      })
-    );
-
-  head.position.y =
-    2.2;
-
-  head.castShadow = true;
-
-  group.add(head);
-
-  // Headband
-
-  const band =
-    new THREE.Mesh(
-      new THREE.TorusGeometry(
-        .35,
-        .035,
-        8,
-        20
-      ),
-      new THREE.MeshStandardMaterial({
-        color:accent
-      })
-    );
-
-  band.rotation.x =
-    Math.PI / 2;
-
-  band.position.y =
-    2.22;
-
-  group.add(band);
-
-  scene.add(group);
-
-  return {
-    mesh:group,
-
-    velocity:
-      new THREE.Vector3(),
-
-    targetVelocity:
-      new THREE.Vector3(),
-
-    moveSpeed:PLAYER_SPEED,
-
-    stamina:1,
-
-    dribbleTime:0,
-
-    moveCooldown:0,
-
-    defenseCooldown:0,
-
-    stealCooldown:0
-  };
-}
-
-const player =
-  createPlayer(
-    0x1976d2,
-    0xffffff
-  );
-
-const defender =
-  createPlayer(
-    0xd32f2f,
-    0xffffff
-  );
-
-player.mesh.position.set(
-  0,
-  0,
-  7
-);
-
-defender.mesh.position.set(
-  0,
-  0,
-  2
-);
-
-// ============================================================
-// HOOPS
-// ============================================================
-
-function createHoop(
-  z,
-  facing
-) {
-  const group =
-    new THREE.Group();
-
-  group.position.z = z;
-
-  scene.add(group);
-
-  const pole =
-    new THREE.Mesh(
-      new THREE.CylinderGeometry(
-        .18,
-        .24,
-        4.2,
-        16
-      ),
-      new THREE.MeshStandardMaterial({
-        color:0x30343a,
-        metalness:.3
-      })
-    );
-
-  pole.position.set(
-    0,
-    2,
-    facing * 2
-  );
-
-  pole.castShadow = true;
-
-  group.add(pole);
-
-  const board =
-    new THREE.Mesh(
-      new THREE.BoxGeometry(
-        5.2,
-        3,
-        .18
-      ),
-      new THREE.MeshStandardMaterial({
-        color:0xf2f2f2,
-        roughness:.35
-      })
-    );
-
-  board.position.set(
-    0,
-    4.2,
-    facing * .8
-  );
-
-  board.castShadow = true;
-
-  group.add(board);
-
-  const square =
-    new THREE.Mesh(
-      new THREE.BoxGeometry(
-        1.8,
-        1.1,
-        .04
-      ),
-      new THREE.MeshBasicMaterial({
-        color:0xffffff
-      })
-    );
-
-  square.position.set(
-    0,
-    4.05,
-    facing * .68
-  );
-
-  group.add(square);
-
-  const rim =
-    new THREE.Mesh(
-      new THREE.TorusGeometry(
-        .75,
-        .075,
-        12,
-        32
-      ),
-      new THREE.MeshStandardMaterial({
-        color:0xff5a1f,
-        metalness:.25
-      })
-    );
-
-  rim.rotation.x =
-    Math.PI / 2;
-
-  rim.position.set(
-    0,
-    HOOP_Y,
-    facing * 1.15
-  );
-
-  group.add(rim);
-
-  // Net
-
-  const netMaterial =
-    new THREE.LineBasicMaterial({
-      color:0xffffff,
-      transparent:true,
-      opacity:.55
-    });
-
-  for (
-    let i = 0;
-    i < 12;
-    i++
-  ) {
-    const a =
-      (i / 12) *
-      Math.PI *
-      2;
-
-    const x =
-      Math.cos(a) *
-      .72;
-
-    const zz =
-      Math.sin(a) *
-      .72;
-
-    const geometry =
-      new THREE.BufferGeometry()
-        .setFromPoints([
-          new THREE.Vector3(
-            x,
-            HOOP_Y,
-            facing * 1.15 +
-              zz
-          ),
-
-          new THREE.Vector3(
-            x * .55,
-            HOOP_Y - .75,
-            facing * 1.15 +
-              zz * .55
-          )
-        ]);
-
-    group.add(
-      new THREE.Line(
-        geometry,
-        netMaterial
-      )
-    );
-  }
-
-  return {
-    position:
-      new THREE.Vector3(
-        0,
-        HOOP_Y,
-        z +
-          facing * 1.15
-      )
-  };
-}
-
-const homeHoop =
-  createHoop(
-    -COURT_LENGTH / 2,
-    1
-  );
-
-const awayHoop =
-  createHoop(
-    COURT_LENGTH / 2,
-    -1
-  );
-
-// ============================================================
+// ---------------------------------------------------------
 // INPUT
-// ============================================================
+// ---------------------------------------------------------
 
 const keys = {};
 
 window.addEventListener(
   "keydown",
-  (event) => {
+  e => {
     if (
       [
         "Space",
@@ -1160,51 +871,48 @@ window.addEventListener(
         "ArrowDown",
         "ArrowLeft",
         "ArrowRight"
-      ].includes(
-        event.code
-      )
+      ].includes(e.code)
     ) {
-      event.preventDefault();
+      e.preventDefault();
     }
 
-    keys[event.code] = true;
+    keys[e.code] = true;
 
     startAudio();
 
     if (
-      event.code === "Space" &&
-      !event.repeat
+      e.code === "Space" &&
+      !e.repeat
     ) {
       beginShot();
     }
 
     if (
-      event.code === "KeyQ" &&
-      !event.repeat
+      e.code === "KeyF" &&
+      !e.repeat
     ) {
-      performDribble(
-        "CROSSOVER"
-      );
+      passBall();
     }
 
     if (
-      event.code === "KeyE" &&
-      !event.repeat
+      e.code === "KeyQ" &&
+      !e.repeat
     ) {
-      performDribble(
-        "BEHIND THE BACK"
-      );
+      crossover();
     }
 
     if (
-      event.code === "KeyR"
+      e.code === "KeyE" &&
+      !e.repeat
     ) {
+      behindBack();
+    }
+
+    if (e.code === "KeyR") {
       resetPossession();
     }
 
-    if (
-      event.code === "Escape"
-    ) {
+    if (e.code === "Escape") {
       togglePause();
     }
   }
@@ -1212,74 +920,57 @@ window.addEventListener(
 
 window.addEventListener(
   "keyup",
-  (event) => {
-    keys[event.code] =
-      false;
+  e => {
+    keys[e.code] = false;
 
-    if (
-      event.code === "Space"
-    ) {
+    if (e.code === "Space") {
       releaseShot();
     }
   }
 );
 
-// ============================================================
+// ---------------------------------------------------------
 // AUDIO
-// ============================================================
+// ---------------------------------------------------------
 
-let audioContext = null;
-let masterGain = null;
+let audio = null;
+let master = null;
 
 function startAudio() {
-  if (state.audioStarted) {
-    return;
-  }
+  if (state.audioStarted) return;
 
   try {
-    audioContext =
+    audio =
       new (
         window.AudioContext ||
         window.webkitAudioContext
       )();
 
-    masterGain =
-      audioContext.createGain();
+    master =
+      audio.createGain();
 
-    masterGain.gain.value =
-      0.08;
+    master.gain.value = .07;
 
-    masterGain.connect(
-      audioContext.destination
+    master.connect(
+      audio.destination
     );
 
-    state.audioStarted =
-      true;
-  } catch {
-    // Audio is optional.
-  }
+    state.audioStarted = true;
+  } catch {}
 }
 
-function crowdSound(
-  intensity = .5
-) {
-  if (
-    !audioContext ||
-    !masterGain
-  ) {
-    return;
-  }
+function sound(strength = .5) {
+  if (!audio || !master) return;
 
   const duration =
-    .18 +
-    intensity * .45;
+    .15 + strength * .4;
 
   const buffer =
-    audioContext.createBuffer(
+    audio.createBuffer(
       1,
-      audioContext.sampleRate *
+      audio.sampleRate *
         duration,
-      audioContext.sampleRate
+      audio.sampleRate
     );
 
   const data =
@@ -1290,43 +981,311 @@ function crowdSound(
     i < data.length;
     i++
   ) {
-    const envelope =
-      1 -
-      i / data.length;
-
     data[i] =
-      (
-        Math.random() * 2 -
-        1
-      ) *
-      envelope;
+      (Math.random() * 2 - 1) *
+      (1 - i / data.length);
   }
 
   const source =
-    audioContext.createBufferSource();
+    audio.createBufferSource();
 
   const gain =
-    audioContext.createGain();
+    audio.createGain();
 
   gain.gain.value =
-    .12 *
-    intensity;
+    .15 * strength;
 
-  source.buffer =
-    buffer;
+  source.buffer = buffer;
 
   source.connect(gain);
-
-  gain.connect(
-    masterGain
-  );
+  gain.connect(master);
 
   source.start();
 }
 
-// ============================================================
-// GAME START
-// ============================================================
+// ---------------------------------------------------------
+// MENU
+// ---------------------------------------------------------
+
+const menu =
+  document.createElement("div");
+
+menu.id = "gameMenu";
+
+menu.innerHTML = `
+  <div class="menuCard">
+    <div class="eyebrow">
+      COURT CLASH
+    </div>
+
+    <h1>
+      5V5<br>
+      <span>BASKETBALL</span>
+    </h1>
+
+    <p>
+      Full-court 3D basketball
+    </p>
+
+    <button id="startGameButton">
+      START GAME
+    </button>
+
+    <div class="help">
+      <span>WASD / ARROWS — MOVE</span>
+      <span>SHIFT — SPRINT</span>
+      <span>SPACE — SHOOT</span>
+      <span>F — PASS</span>
+      <span>Q — CROSSOVER</span>
+      <span>E — BEHIND BACK</span>
+      <span>R — RESET</span>
+    </div>
+  </div>
+`;
+
+document.body.appendChild(menu);
+
+const menuStyle =
+  document.createElement("style");
+
+menuStyle.textContent = `
+#gameMenu {
+  position:fixed;
+  inset:0;
+  z-index:100;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:
+    radial-gradient(
+      circle,
+      rgba(247,183,49,.15),
+      transparent 40%
+    ),
+    linear-gradient(
+      135deg,
+      #05080d,
+      #17110b
+    );
+  color:white;
+}
+
+.menuCard {
+  width:min(600px,calc(100% - 30px));
+  padding:45px 35px;
+  text-align:center;
+  border-radius:24px;
+  background:rgba(7,10,15,.94);
+  border:1px solid rgba(255,255,255,.15);
+  box-shadow:0 30px 100px #000;
+}
+
+.eyebrow {
+  color:#f7b731;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:5px;
+}
+
+.menuCard h1 {
+  font-size:clamp(48px,10vw,88px);
+  line-height:.82;
+  font-style:italic;
+  margin:18px 0;
+}
+
+.menuCard h1 span {
+  color:#f7b731;
+}
+
+.menuCard p {
+  opacity:.55;
+}
+
+#startGameButton {
+  margin:20px;
+  padding:16px 42px;
+  border:0;
+  border-radius:12px;
+  background:#f7b731;
+  color:#111;
+  font-size:17px;
+  font-weight:1000;
+  cursor:pointer;
+}
+
+.help {
+  display:grid;
+  gap:6px;
+  font-size:10px;
+  letter-spacing:1px;
+  opacity:.5;
+}
+`;
+
+document.head.appendChild(
+  menuStyle
+);
+
+$("startGameButton")?.addEventListener(
+  "click",
+  () => {
+    menu.style.display = "none";
+    startGame();
+  }
+);
+
+// ---------------------------------------------------------
+// EXTRA HUD
+// ---------------------------------------------------------
+
+const extra = document.createElement("div");
+
+extra.innerHTML = `
+  <div id="extraHUD">
+
+    <div id="shotClockBox">
+      <small>SHOT CLOCK</small>
+      <strong id="shotClock">24</strong>
+    </div>
+
+    <div id="possession">
+      HOME BALL
+    </div>
+
+    <div id="crowdHUD">
+      CROWD:
+      <span id="crowdLevel">
+        CALM
+      </span>
+    </div>
+
+    <div id="pauseScreen">
+      <div>
+        <h1>PAUSED</h1>
+        <p>Press ESC to resume</p>
+      </div>
+    </div>
+
+  </div>
+`;
+
+document.body.appendChild(extra);
+
+const extraCSS =
+  document.createElement("style");
+
+extraCSS.textContent = `
+#shotClockBox {
+  position:fixed;
+  top:20px;
+  right:20px;
+  z-index:10;
+  color:white;
+  background:rgba(0,0,0,.8);
+  border:1px solid #ffffff25;
+  padding:8px 15px;
+  border-radius:12px;
+  text-align:center;
+}
+
+#shotClockBox small {
+  display:block;
+  font-size:8px;
+  letter-spacing:2px;
+  opacity:.6;
+}
+
+#shotClock {
+  display:block;
+  font-size:30px;
+}
+
+#possession {
+  position:fixed;
+  top:112px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:10;
+  background:#000b;
+  color:white;
+  border-radius:999px;
+  padding:6px 14px;
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:1px;
+}
+
+#crowdHUD {
+  position:fixed;
+  top:20px;
+  left:20px;
+  z-index:10;
+  color:white;
+  background:#000b;
+  padding:8px 12px;
+  border-radius:8px;
+  font-size:9px;
+  letter-spacing:1px;
+}
+
+#crowdLevel {
+  color:#f7b731;
+  font-weight:900;
+}
+
+#pauseScreen {
+  position:fixed;
+  inset:0;
+  z-index:50;
+  display:none;
+  place-items:center;
+  background:#000b;
+  color:white;
+  text-align:center;
+}
+
+#pauseScreen.active {
+  display:grid;
+}
+
+#pauseScreen h1 {
+  font-size:60px;
+  margin:0;
+}
+
+#pauseScreen p {
+  opacity:.6;
+}
+`;
+
+document.head.appendChild(
+  extraCSS
+);
+
+const shotClockEl =
+  document.getElementById(
+    "shotClock"
+  );
+
+const possessionEl =
+  document.getElementById(
+    "possession"
+  );
+
+const crowdLevelEl =
+  document.getElementById(
+    "crowdLevel"
+  );
+
+const pauseScreen =
+  document.getElementById(
+    "pauseScreen"
+  );
+
+// ---------------------------------------------------------
+// START
+// ---------------------------------------------------------
 
 function startGame() {
   startAudio();
@@ -1339,530 +1298,496 @@ function startGame() {
     GAME_LENGTH;
 
   state.shotClock =
-    SHOT_CLOCK_MAX;
+    SHOT_CLOCK;
 
-  state.homeScore = 0;
-  state.awayScore = 0;
+  state.home = 0;
+  state.away = 0;
 
   state.possession =
     "home";
 
-  state.ballOwner =
-    "player";
+  state.crowd = .25;
+  state.crowdTarget = .25;
 
-  state.ballState =
-    "held";
+  state.standing = 0;
+  state.standingTarget = 0;
 
-  state.shooting =
-    false;
+  gameOver.classList.add("hidden");
 
-  state.shotCharge =
-    0;
-
-  state.crowdIntensity =
-    .22;
-
-  state.crowdTarget =
-    .22;
-
-  state.crowdStanding =
-    0;
-
-  state.crowdTargetStanding =
-    0;
-
-  player.mesh.position.set(
-    0,
-    0,
-    7
-  );
-
-  defender.mesh.position.set(
-    0,
-    0,
-    1.5
-  );
-
-  updateScoreboard();
+  placeTeams();
 
   resetPossession();
+
+  updateScore();
 
   showMessage(
     "CHECK BALL"
   );
 
-  setTimeout(
-    () => {
-      if (state.running) {
-        statusEl.textContent =
-          "PLAY";
-      }
-    },
-    1200
-  );
-}
-
-// ============================================================
-// MAIN MENU
-// ============================================================
-
-const menu =
-  document.createElement(
-    "div"
-  );
-
-menu.id =
-  "gameMenu";
-
-menu.innerHTML = `
-  <div class="menuCard">
-    <div class="menuEyebrow">
-      COURT CLASH
-    </div>
-
-    <h1>PLAY<br><span>BASKETBALL</span></h1>
-
-    <p>
-      Arcade 3D Basketball
-    </p>
-
-    <button id="startGameButton">
-      START GAME
-    </button>
-
-    <div class="menuHelp">
-      <div>WASD / ARROWS — MOVE</div>
-      <div>SHIFT — SPRINT</div>
-      <div>SPACE — SHOOT</div>
-      <div>Q / E — DRIBBLE MOVES</div>
-      <div>R — RESET POSSESSION</div>
-      <div>ESC — PAUSE</div>
-    </div>
-  </div>
-`;
-
-document.body.appendChild(
-  menu
-);
-
-const menuCSS =
-  document.createElement(
-    "style"
-  );
-
-menuCSS.textContent = `
-#gameMenu {
-  position:fixed;
-  inset:0;
-  z-index:100;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background:
-    radial-gradient(
-      circle at center,
-      rgba(247,183,49,.12),
-      transparent 38%
-    ),
-    linear-gradient(
-      135deg,
-      #060a10,
-      #17120d
-    );
-  color:white;
-}
-
-.menuCard {
-  width:min(560px,calc(100% - 32px));
-  padding:48px 38px;
-  text-align:center;
-  border-radius:24px;
-  border:1px solid rgba(255,255,255,.15);
-  background:rgba(7,10,15,.92);
-  box-shadow:
-    0 30px 100px rgba(0,0,0,.65);
-}
-
-.menuEyebrow {
-  color:#f7b731;
-  font-size:11px;
-  font-weight:900;
-  letter-spacing:5px;
-}
-
-.menuCard h1 {
-  margin:15px 0;
-  font-size:clamp(48px,10vw,84px);
-  line-height:.82;
-  font-weight:1000;
-  font-style:italic;
-}
-
-.menuCard h1 span {
-  color:#f7b731;
-}
-
-.menuCard p {
-  opacity:.6;
-  margin:20px;
-}
-
-#startGameButton {
-  padding:16px 42px;
-  border:0;
-  border-radius:12px;
-  background:#f7b731;
-  color:#111;
-  font-size:17px;
-  font-weight:1000;
-  cursor:pointer;
-}
-
-.menuHelp {
-  margin-top:26px;
-  display:grid;
-  gap:7px;
-  font-size:10px;
-  letter-spacing:1px;
-  opacity:.55;
-}
-`;
-
-document.head.appendChild(
-  menuCSS
-);
-
-document
-  .getElementById(
-    "startGameButton"
-  )
-  .addEventListener(
-    "click",
-    () => {
-      menu.style.display =
-        "none";
-
-      startGame();
+  setTimeout(() => {
+    if (state.running) {
+      statusEl.textContent =
+        "HOME BALL";
     }
-  );
+  }, 1000);
+}
 
-// ============================================================
-// MOVEMENT
-// ============================================================
+function placeTeams() {
+  setFormation();
 
-function updatePlayer(
-  dt
-) {
+  homeTeam.forEach((p, i) => {
+    p.mesh.position.copy(
+      p.homeSpot
+    );
+
+    p.mesh.position.x +=
+      (Math.random() - .5) *
+      .4;
+
+    p.mesh.position.z +=
+      (Math.random() - .5) *
+      .4;
+
+    p.velocity.set(0, 0, 0);
+  });
+
+  awayTeam.forEach((p, i) => {
+    p.mesh.position.set(
+      p.homeSpot.x,
+      0,
+      p.homeSpot.z
+    );
+
+    p.velocity.set(0, 0, 0);
+  });
+}
+
+// ---------------------------------------------------------
+// PLAYER MOVEMENT
+// ---------------------------------------------------------
+
+function getControlledPlayer() {
+  return homePG;
+}
+
+function updateControlledPlayer(dt) {
   if (
     !state.running ||
     state.paused ||
     state.ended
-  ) {
-    return;
-  }
+  ) return;
+
+  const p =
+    getControlledPlayer();
 
   if (
-    state.ballOwner !==
-    "player"
+    !p.hasBall &&
+    state.ballOwner !== p
   ) {
-    return;
+    // Still allow movement.
   }
 
-  const direction =
+  const dir =
     new THREE.Vector3();
 
   if (
     keys.KeyW ||
     keys.ArrowUp
-  ) {
-    direction.z -= 1;
-  }
+  ) dir.z -= 1;
 
   if (
     keys.KeyS ||
     keys.ArrowDown
-  ) {
-    direction.z += 1;
-  }
+  ) dir.z += 1;
 
   if (
     keys.KeyA ||
     keys.ArrowLeft
-  ) {
-    direction.x -= 1;
-  }
+  ) dir.x -= 1;
 
   if (
     keys.KeyD ||
     keys.ArrowRight
-  ) {
-    direction.x += 1;
-  }
+  ) dir.x += 1;
 
   const moving =
-    direction.lengthSq() >
-    0;
+    dir.lengthSq() > 0;
 
-  const sprinting =
+  const sprint =
     keys.ShiftLeft ||
     keys.ShiftRight;
 
   const speed =
-    sprinting &&
-    player.stamina > .05
+    sprint &&
+    p.stamina > .05
       ? SPRINT_SPEED
       : PLAYER_SPEED;
 
   if (moving) {
-    direction.normalize();
+    dir.normalize();
 
-    player.targetVelocity
-      .copy(direction)
-      .multiplyScalar(
-        speed
-      );
+    p.velocity.lerp(
+      new THREE.Vector3(
+        dir.x * speed,
+        0,
+        dir.z * speed
+      ),
+      .18
+    );
 
-    player.mesh.rotation.y =
+    p.mesh.rotation.y =
       Math.atan2(
-        direction.x,
-        direction.z
+        dir.x,
+        dir.z
       );
 
-    if (sprinting) {
-      player.stamina =
+    if (sprint) {
+      p.stamina =
         Math.max(
           0,
-          player.stamina -
-            dt * .35
+          p.stamina -
+          dt * .35
         );
     }
   } else {
-    player.targetVelocity
-      .set(0, 0, 0);
+    p.velocity.multiplyScalar(.8);
 
-    player.stamina =
+    p.stamina =
       Math.min(
         1,
-        player.stamina +
-          dt * .22
+        p.stamina +
+        dt * .25
       );
   }
 
-  player.velocity.lerp(
-    player.targetVelocity,
-    1 -
-      Math.pow(
-        .0001,
-        dt
-      )
-  );
-
-  player.mesh.position.addScaledVector(
-    player.velocity,
+  p.mesh.position.addScaledVector(
+    p.velocity,
     dt
   );
 
-  player.mesh.position.x =
-    THREE.MathUtils.clamp(
-      player.mesh.position.x,
-      -COURT_WIDTH / 2 +
-        PLAYER_RADIUS,
-      COURT_WIDTH / 2 -
-        PLAYER_RADIUS
-    );
+  clampPlayer(p);
 
-  player.mesh.position.z =
-    THREE.MathUtils.clamp(
-      player.mesh.position.z,
-      -COURT_LENGTH / 2 +
-        PLAYER_RADIUS,
-      COURT_LENGTH / 2 -
-        PLAYER_RADIUS
+  p.dribbleTime +=
+    dt * (
+      moving ? 10 : 5
     );
-
-  player.dribbleTime +=
-    dt *
-    (moving ? 9 : 5);
 }
 
-// ============================================================
-// DEFENDER AI
-// ============================================================
+function clampPlayer(p) {
+  p.mesh.position.x =
+    THREE.MathUtils.clamp(
+      p.mesh.position.x,
+      -COURT_W / 2 + .5,
+      COURT_W / 2 - .5
+    );
 
-function updateDefense(
-  dt
+  p.mesh.position.z =
+    THREE.MathUtils.clamp(
+      p.mesh.position.z,
+      -COURT_L / 2 + .5,
+      COURT_L / 2 - .5
+    );
+}
+
+// ---------------------------------------------------------
+// AI TEAMMATES
+// ---------------------------------------------------------
+
+function updateHomeAI(dt) {
+  for (const p of homeTeam) {
+    if (p === homePG) continue;
+
+    const target =
+      p.homeSpot.clone();
+
+    const ballPlayer =
+      getBallPlayer();
+
+    if (
+      state.possession === "home" &&
+      ballPlayer
+    ) {
+      const side =
+        p.number % 2 === 0
+          ? -1
+          : 1;
+
+      target.x =
+        side *
+        (3.2 +
+        p.number * .35);
+
+      target.z =
+        3.5 +
+        p.number * .6;
+
+      // Center stays closer to paint.
+      if (p.role === "C") {
+        target.x *= .5;
+        target.z = 1;
+      }
+
+      // Occasionally cut.
+      if (
+        Math.random() < dt * .18
+      ) {
+        target.x *= .5;
+        target.z =
+          THREE.MathUtils.lerp(
+            target.z,
+            -2,
+            .35
+          );
+      }
+    }
+
+    moveAIPlayer(
+      p,
+      target,
+      dt,
+      3.2
+    );
+  }
+}
+
+// ---------------------------------------------------------
+// AWAY AI
+// ---------------------------------------------------------
+
+function updateAwayAI(dt) {
+  const ballPlayer =
+    getBallPlayer();
+
+  for (const p of awayTeam) {
+    let target =
+      p.homeSpot.clone();
+
+    if (
+      state.possession === "home" &&
+      ballPlayer
+    ) {
+      // Defensive assignment.
+      const assignment =
+        closestHomePlayer(
+          p
+        );
+
+      if (assignment) {
+        target =
+          assignment.mesh.position
+            .clone();
+
+        const dx =
+          target.x -
+          p.mesh.position.x;
+
+        const dz =
+          target.z -
+          p.mesh.position.z;
+
+        const len =
+          Math.hypot(dx, dz);
+
+        if (len > 0) {
+          target.x -=
+            dx / len * 1.1;
+
+          target.z -=
+            dz / len * 1.1;
+        }
+      }
+    }
+
+    if (
+      state.possession === "away"
+    ) {
+      const owner =
+        getBallPlayer();
+
+      if (
+        owner &&
+        owner.team === "away" &&
+        p !== owner
+      ) {
+        target =
+          p.homeSpot.clone();
+
+        // Give spacing.
+        target.x +=
+          Math.sin(
+            performance.now() * .001 +
+            p.number
+          ) * .7;
+      }
+    }
+
+    moveAIPlayer(
+      p,
+      target,
+      dt,
+      3.3
+    );
+
+    // CPU steals.
+    if (
+      state.possession === "home" &&
+      ballPlayer &&
+      p.mesh.position.distanceTo(
+        ballPlayer.mesh.position
+      ) < .9 &&
+      Math.random() < dt * .025
+    ) {
+      stealFromHome(p);
+    }
+  }
+}
+
+function moveAIPlayer(
+  p,
+  target,
+  dt,
+  speed
 ) {
-  if (
-    !state.running ||
-    state.paused ||
-    state.ended
-  ) {
-    return;
-  }
-
-  if (
-    state.ballOwner !==
-    "player"
-  ) {
-    return;
-  }
-
-  const target =
-    player.mesh.position;
-
   const dx =
     target.x -
-    defender.mesh.position.x;
+    p.mesh.position.x;
 
   const dz =
     target.z -
-    defender.mesh.position.z;
+    p.mesh.position.z;
 
   const distance =
     Math.hypot(dx, dz);
 
-  // Keep a realistic defensive gap.
-  const desiredGap =
-    1.25;
-
-  let moveX = 0;
-  let moveZ = 0;
-
-  if (
-    distance >
-    desiredGap
-  ) {
-    moveX = dx;
-    moveZ = dz;
-
-    const length =
-      Math.hypot(
-        moveX,
-        moveZ
+  if (distance > .25) {
+    const dir =
+      new THREE.Vector3(
+        dx / distance,
+        0,
+        dz / distance
       );
 
-    if (length > 0) {
-      moveX /= length;
-      moveZ /= length;
-    }
+    p.velocity.lerp(
+      dir.multiplyScalar(speed),
+      .1
+    );
+
+    p.mesh.rotation.y =
+      Math.atan2(
+        p.velocity.x,
+        p.velocity.z
+      );
+  } else {
+    p.velocity.multiplyScalar(.8);
   }
 
-  const defensiveSpeed =
-    state.gameTime < 30
-      ? 4.4
-      : 3.7;
-
-  defender.velocity.lerp(
-    new THREE.Vector3(
-      moveX *
-        defensiveSpeed,
-      0,
-      moveZ *
-        defensiveSpeed
-    ),
-    1 -
-      Math.pow(
-        .01,
-        dt
-      )
-  );
-
-  defender.mesh.position.addScaledVector(
-    defender.velocity,
+  p.mesh.position.addScaledVector(
+    p.velocity,
     dt
   );
 
-  defender.mesh.position.x =
-    THREE.MathUtils.clamp(
-      defender.mesh.position.x,
-      -COURT_WIDTH / 2 +
-        .6,
-      COURT_WIDTH / 2 -
-        .6
-    );
+  clampPlayer(p);
+}
 
-  defender.mesh.position.z =
-    THREE.MathUtils.clamp(
-      defender.mesh.position.z,
-      -COURT_LENGTH / 2 +
-        .6,
-      COURT_LENGTH / 2 -
-        .6
-    );
+// ---------------------------------------------------------
+// ASSIGNMENTS
+// ---------------------------------------------------------
 
-  defender.mesh.rotation.y =
-    Math.atan2(
-      dx,
-      dz
-    );
+function closestHomePlayer(defender) {
+  let best = null;
+  let bestDistance = Infinity;
 
-  // Occasional steal attempt.
-  if (
-    distance < 1.05 &&
-    !state.shooting &&
-    defender.stealCooldown <= 0
-  ) {
-    defender.stealCooldown =
-      1.8;
+  for (const p of homeTeam) {
+    const d =
+      p.mesh.position.distanceTo(
+        defender.mesh.position
+      );
 
-    const stealChance =
-      .08;
-
-    if (
-      Math.random() <
-      stealChance
-    ) {
-      triggerSteal();
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = p;
     }
   }
 
-  defender.stealCooldown =
-    Math.max(
-      0,
-      defender.stealCooldown -
-        dt
-    );
+  return best;
 }
 
-// ============================================================
-// DRIBBLE
-// ============================================================
+// ---------------------------------------------------------
+// BALL
+// ---------------------------------------------------------
 
-function updateDribble(
-  dt
-) {
+function getBallPlayer() {
+  return players.find(
+    p => p.hasBall
+  );
+}
+
+function giveBall(p) {
+  players.forEach(
+    x => x.hasBall = false
+  );
+
+  p.hasBall = true;
+
+  state.ballOwner = p;
+  state.ballState = "held";
+  state.possession = p.team;
+
+  updatePossession();
+}
+
+function updateBall(dt) {
   if (
-    state.ballState !==
-    "held" ||
-    state.ballOwner !==
-    "player"
+    state.ballState === "flying"
   ) {
+    updateBallFlight(dt);
     return;
   }
 
+  if (
+    state.ballState === "loose"
+  ) {
+    updateLooseBall(dt);
+    return;
+  }
+
+  const owner =
+    getBallPlayer();
+
+  if (!owner) return;
+
   const moving =
-    player.velocity.length() >
-    .4;
+    owner.velocity.length() > .4;
+
+  owner.dribbleTime +=
+    dt *
+    (moving ? 10 : 5);
 
   const bounce =
     Math.abs(
       Math.sin(
-        player.dribbleTime
+        owner.dribbleTime
       )
     );
 
+  const side =
+    owner === homePG
+      ? .6
+      : .45;
+
   ball.position.set(
-    player.mesh.position.x +
-      .58 *
-        Math.sin(
-          player.mesh.rotation.y
-        ),
+    owner.mesh.position.x +
+      Math.sin(
+        owner.mesh.rotation.y
+      ) * side,
 
-    .75 +
-      bounce * .28,
+    .65 +
+      bounce * .35,
 
-    player.mesh.position.z -
-      .45
+    owner.mesh.position.z -
+      Math.cos(
+        owner.mesh.rotation.y
+      ) * .48
   );
 
   ball.rotation.x +=
@@ -1870,127 +1795,139 @@ function updateDribble(
 
   ball.rotation.z +=
     dt * 7;
-
-  // Make dribble slightly more active when sprinting.
-  if (
-    moving &&
-    (
-      keys.ShiftLeft ||
-      keys.ShiftRight
-    )
-  ) {
-    ball.position.y =
-      .58 +
-      bounce * .32;
-  }
 }
 
-// ============================================================
-// DRIBBLE MOVES
-// ============================================================
+// ---------------------------------------------------------
+// PASSING
+// ---------------------------------------------------------
 
-function performDribble(
-  move
-) {
+function passBall() {
   if (
     !state.running ||
     state.paused ||
-    state.ended ||
-    state.ballOwner !==
-      "player" ||
-    state.ballState !==
-      "held"
-  ) {
-    return;
-  }
+    state.ended
+  ) return;
+
+  const owner =
+    getBallPlayer();
 
   if (
-    player.moveCooldown >
-    0
-  ) {
-    return;
-  }
+    !owner ||
+    owner.team !== "home"
+  ) return;
 
-  player.moveCooldown =
-    .55;
+  const teammates =
+    homeTeam.filter(
+      p =>
+        p !== owner
+    );
 
-  state.lastMove =
-    move;
+  teammates.sort(
+    (a, b) =>
+      a.mesh.position.distanceTo(
+        owner.mesh.position
+      ) -
+      b.mesh.position.distanceTo(
+        owner.mesh.position
+      )
+  );
 
-  if (
-    move ===
-    "CROSSOVER"
-  ) {
-    player.mesh.rotation.y +=
-      Math.PI * .65;
-  }
+  const target =
+    teammates.find(
+      p =>
+        p.mesh.position.distanceTo(
+          closestOpponent(p)
+        ) > 2
+    ) ||
+    teammates[0];
 
-  if (
-    move ===
-    "BEHIND THE BACK"
-  ) {
-    player.mesh.rotation.y +=
-      Math.PI * .9;
-  }
+  if (!target) return;
 
-  // Chance of creating separation.
+  owner.hasBall = false;
+
+  state.ballOwner = null;
+  state.ballState = "flying";
+
+  const start =
+    ball.position.clone();
+
+  const end =
+    target.mesh.position.clone();
+
+  end.y = 1.15;
+
   const distance =
-    player.mesh.position.distanceTo(
-      defender.mesh.position
+    start.distanceTo(end);
+
+  const duration =
+    THREE.MathUtils.clamp(
+      .3 + distance * .04,
+      .3,
+      .7
     );
 
-  if (
-    distance < 2.1 &&
-    Math.random() < .42
-  ) {
-    defender.velocity.multiplyScalar(
-      .15
-    );
+  state.shot = {
+    type: "pass",
+    time: 0,
+    duration,
+    start,
+    target: end,
+    receiver: target
+  };
 
-    crowdReact(
-      "dribble",
-      .24
-    );
-
-    showMessage(
-      move ===
-        "CROSSOVER"
-        ? "ANKLE BREAKER!"
-        : "NICE MOVE!"
-    );
-
-    crowdSound(.55);
-  }
+  sound(.25);
 }
 
-// ============================================================
+function closestOpponent(p) {
+  const team =
+    p.team === "home"
+      ? awayTeam
+      : homeTeam;
+
+  let best =
+    team[0];
+
+  let dist = Infinity;
+
+  for (const opponent of team) {
+    const d =
+      opponent.mesh.position.distanceTo(
+        p.mesh.position
+      );
+
+    if (d < dist) {
+      dist = d;
+      best = opponent;
+    }
+  }
+
+  return best;
+}
+
+// ---------------------------------------------------------
 // SHOOTING
-// ============================================================
+// ---------------------------------------------------------
+
+let charge = 0;
+let shooting = false;
 
 function beginShot() {
   if (
     !state.running ||
     state.paused ||
     state.ended
-  ) {
-    return;
-  }
+  ) return;
+
+  const owner =
+    getBallPlayer();
 
   if (
-    state.ballOwner !==
-      "player" ||
-    state.ballState !==
-      "held" ||
-    state.shooting
-  ) {
-    return;
-  }
+    owner !== homePG ||
+    state.possession !== "home"
+  ) return;
 
-  state.shooting =
-    true;
-
-  state.shotCharge =
-    0;
+  shooting = true;
+  charge = 0;
 
   shotMeter.classList.remove(
     "hidden"
@@ -2000,33 +1937,20 @@ function beginShot() {
     "CHARGE";
 }
 
-function updateShotCharge(
-  dt
-) {
-  if (
-    !state.shooting
-  ) {
-    return;
-  }
+function updateCharge(dt) {
+  if (!shooting) return;
 
-  state.shotCharge +=
-    dt * 1.1;
+  charge += dt * 1.05;
 
-  if (
-    state.shotCharge >
-    1
-  ) {
-    state.shotCharge = 0;
-  }
+  if (charge > 1)
+    charge = 0;
 
   meterFill.style.width =
-    `${state.shotCharge * 100}%`;
+    `${charge * 100}%`;
 
   if (
-    state.shotCharge >=
-      .74 &&
-    state.shotCharge <=
-      .86
+    charge >= .74 &&
+    charge <= .86
   ) {
     meterFill.style.background =
       "#2ecc71";
@@ -2037,241 +1961,205 @@ function updateShotCharge(
 }
 
 function releaseShot() {
-  if (
-    !state.shooting
-  ) {
-    return;
-  }
+  if (!shooting) return;
 
-  state.shooting =
-    false;
+  shooting = false;
 
   shotMeter.classList.add(
     "hidden"
   );
 
+  const owner =
+    getBallPlayer();
+
   if (
-    state.ballOwner !==
-      "player" ||
-    state.ballState !==
-      "held"
-  ) {
-    return;
-  }
-
-  state.ballState =
-    "flying";
-
-  state.ballOwner =
-    null;
-
-  statusEl.textContent =
-    "SHOT";
+    owner !== homePG
+  ) return;
 
   const target =
-    player.mesh.position.z >
-      0
-      ? homeHoop.position
-      : awayHoop.position;
+    awayHoop;
 
   const start =
     ball.position.clone();
 
   const distance =
     Math.hypot(
-      start.x -
-        target.x,
-      start.z -
-        target.z
+      start.x - target.x,
+      start.z - target.z
     );
 
-  // Shot distance determines 2/3.
-  const three =
-    distance >
-    6.75;
+  const isThree =
+    distance >= 6.75;
 
   const perfect =
-    state.shotCharge >=
-      .74 &&
-    state.shotCharge <=
-      .86;
+    charge >= .74 &&
+    charge <= .86;
 
-  // Defender contest.
-  const defenderDistance =
-    player.mesh.position.distanceTo(
-      defender.mesh.position
-    );
+  const defender =
+    closestOpponent(owner);
 
-  let contestPenalty =
-    0;
+  const contestDistance =
+    defender
+      ? defender.mesh.position.distanceTo(
+          owner.mesh.position
+        )
+      : 99;
 
-  if (
-    defenderDistance <
-    1.35
-  ) {
-    contestPenalty =
-      .18;
-  }
+  let chance =
+    .48 +
+    charge * .35;
 
-  if (
-    defenderDistance <
-    .85
-  ) {
-    contestPenalty =
-      .3;
-  }
+  if (perfect)
+    chance += .2;
 
-  let makeChance =
-    .47 +
-    state.shotCharge *
-      .4 -
-    contestPenalty;
+  if (contestDistance < 1.5)
+    chance -= .15;
 
-  // Deep shots are harder.
-  if (
-    distance > 9
-  ) {
-    makeChance -=
-      .08;
-  }
+  if (contestDistance < .85)
+    chance -= .2;
 
-  if (
-    distance > 12
-  ) {
-    makeChance -=
-      .14;
-  }
+  if (isThree)
+    chance -= .07;
 
-  if (perfect) {
-    makeChance +=
-      .18;
-  }
-
-  makeChance =
+  chance =
     THREE.MathUtils.clamp(
-      makeChance,
+      chance,
       .08,
       .96
     );
 
   const made =
-    Math.random() <
-    makeChance;
+    Math.random() < chance;
 
-  state.shotTime = 0;
-
-  state.shotDuration =
-    THREE.MathUtils.clamp(
-      .72 +
-        distance * .055,
-      .72,
-      1.4
-    );
-
-  const targetPoint =
+  let targetPoint =
     target.clone();
 
-  // Add slight miss variance.
   if (!made) {
-    const missAmount =
-      perfect
-        ? .18
-        : .55 +
-          Math.random() *
-            .7;
-
     targetPoint.x +=
-      (
-        Math.random() -
-        .5
-      ) *
-      missAmount;
+      (Math.random() - .5) *
+      (perfect ? .25 : .8);
 
     targetPoint.z +=
-      (
-        Math.random() -
-        .5
-      ) *
-      missAmount;
+      (Math.random() - .5) *
+      (perfect ? .25 : .8);
   }
 
-  const horizontal =
-    new THREE.Vector3(
-      targetPoint.x -
-        start.x,
-      0,
-      targetPoint.z -
-        start.z
+  const duration =
+    THREE.MathUtils.clamp(
+      .75 +
+      distance * .05,
+      .75,
+      1.35
     );
 
-  horizontal.divideScalar(
-    state.shotDuration
-  );
+  owner.hasBall = false;
 
-  shotVelocity.copy(
-    horizontal
-  );
+  state.ballOwner = null;
+  state.ballState = "flying";
 
-  const gravity =
-    13;
+  state.shot = {
+    type: "shot",
+    time: 0,
+    duration,
+    start,
+    target: targetPoint,
+    made,
+    three: isThree,
+    perfect
+  };
 
-  shotVelocity.y =
-    (
-      targetPoint.y -
-      start.y +
-      .5 *
-        gravity *
-        state.shotDuration *
-        state.shotDuration
-    ) /
-    state.shotDuration;
+  statusEl.textContent =
+    "SHOT";
 
-  state._shotMade =
-    made;
-
-  state._shotThree =
-    three;
-
-  state._shotTarget =
-    targetPoint;
-
-  state._shotPerfect =
-    perfect;
-
-  state._shotContest =
-    contestPenalty;
+  sound(.3);
 }
 
-// ============================================================
-// SHOT PHYSICS
-// ============================================================
+// ---------------------------------------------------------
+// BALL FLIGHT
+// ---------------------------------------------------------
 
-let shotVelocity =
-  new THREE.Vector3();
+function updateBallFlight(dt) {
+  if (!state.shot) return;
 
-function updateShot(
-  dt
-) {
-  if (
-    state.ballState !==
-    "flying"
-  ) {
+  const s = state.shot;
+
+  s.time += dt;
+
+  if (s.type === "pass") {
+    const t =
+      Math.min(
+        1,
+        s.time / s.duration
+      );
+
+    ball.position.lerpVectors(
+      s.start,
+      s.target,
+      t
+    );
+
+    ball.position.y +=
+      Math.sin(
+        t * Math.PI
+      ) * 1.1;
+
+    ball.rotation.x +=
+      dt * 10;
+
+    if (t >= 1) {
+      giveBall(s.receiver);
+      state.shot = null;
+      statusEl.textContent =
+        "HOME BALL";
+    }
+
     return;
   }
 
-  state.shotTime +=
-    dt;
+  const gravity = 13;
 
-  const gravity =
-    13;
+  const t =
+    Math.min(
+      1,
+      s.time / s.duration
+    );
 
-  ball.position.addScaledVector(
-    shotVelocity,
-    dt
+  const horizontal =
+    new THREE.Vector3(
+      s.target.x -
+        s.start.x,
+      0,
+      s.target.z -
+        s.start.z
+    );
+
+  const x =
+    s.start.x +
+    horizontal.x * t;
+
+  const z =
+    s.start.z +
+    horizontal.z * t;
+
+  const y =
+    THREE.MathUtils.lerp(
+      s.start.y,
+      s.target.y,
+      t
+    ) +
+    Math.sin(
+      t * Math.PI
+    ) *
+    Math.max(
+      2,
+      horizontal.length() * .22
+    );
+
+  ball.position.set(
+    x,
+    y,
+    z
   );
-
-  shotVelocity.y -=
-    gravity * dt;
 
   ball.rotation.x +=
     dt * 9;
@@ -2279,210 +2167,233 @@ function updateShot(
   ball.rotation.z +=
     dt * 6;
 
-  if (
-    state.shotTime >=
-    state.shotDuration
-  ) {
+  if (t >= 1) {
     finishShot();
   }
 }
 
-// ============================================================
+// ---------------------------------------------------------
 // SHOT RESULT
-// ============================================================
+// ---------------------------------------------------------
 
 function finishShot() {
-  const made =
-    state._shotMade;
+  const s = state.shot;
 
-  const three =
-    state._shotThree;
+  state.shot = null;
 
-  state.ballState =
-    "loose";
+  if (!s) return;
 
-  if (made) {
+  if (s.made) {
     const points =
-      three ? 3 : 2;
+      s.three ? 3 : 2;
 
-    state.homeScore +=
-      points;
+    state.home += points;
 
-    updateScoreboard();
+    updateScore();
 
-    if (three) {
-      crowdReact(
-        "three",
-        .5
+    state.crowdTarget =
+      Math.min(
+        1,
+        state.crowdTarget +
+        (s.three ? .55 : .3)
       );
 
-      crowdSound(
-        .95
-      );
-
+    if (s.three) {
       showMessage(
-        "THREE!!!"
+        s.perfect
+          ? "PERFECT THREE!"
+          : "THREE!!!"
       );
+      sound(1);
     } else {
-      crowdReact(
-        "basket",
-        .32
-      );
-
-      crowdSound(
-        .65
-      );
-
       showMessage(
-        "BUCKET!"
+        s.perfect
+          ? "PERFECT!"
+          : "BUCKET!"
       );
+      sound(.7);
     }
 
-    if (
-      state.homeScore >
-        state.awayScore
-    ) {
-      statusEl.textContent =
-        "HOME LEAD";
-    }
+    state.ballState = "loose";
 
-    checkComeback();
-
-    setTimeout(
-      () => {
-        if (
-          state.running &&
-          !state.ended
-        ) {
-          resetPossession();
-        }
-      },
-      900
-    );
+    setTimeout(() => {
+      if (state.running)
+        cpuCheckInbound();
+    }, 700);
   } else {
-    crowdReact(
-      "miss",
-      .12
-    );
-
-    crowdSound(
-      .18
-    );
-
     showMessage(
-      state._shotContest >
-        .1
-        ? "CONTESTED!"
-        : "MISS"
+      "MISS!"
     );
 
-    statusEl.textContent =
-      "REBOUND";
+    state.crowdTarget =
+      Math.max(
+        .05,
+        state.crowdTarget -
+        .08
+      );
 
-    // Rebound after miss.
+    sound(.15);
+
+    state.ballState = "loose";
+
     setTimeout(
-      () => {
-        if (
-          state.running &&
-          !state.ended
-        ) {
-          resolveRebound();
-        }
-      },
-      450
+      rebound,
+      500
     );
   }
 }
 
-// ============================================================
+// ---------------------------------------------------------
 // REBOUND
-// ============================================================
+// ---------------------------------------------------------
 
-function resolveRebound() {
-  const defenderDistance =
-    defender.mesh.position.distanceTo(
-      ball.position
-    );
+function updateLooseBall(dt) {
+  ball.position.y -=
+    8 * dt;
 
-  const playerDistance =
-    player.mesh.position.distanceTo(
-      ball.position
-    );
+  if (ball.position.y < .3) {
+    ball.position.y = .3;
+  }
 
+  ball.rotation.x +=
+    dt * 8;
+}
+
+function rebound() {
   if (
-    playerDistance <=
-      defenderDistance +
-        .8
-  ) {
-    state.ballOwner =
-      "player";
+    !state.running ||
+    state.ended
+  ) return;
 
-    state.ballState =
-      "held";
+  let closest = null;
+  let best = Infinity;
 
-    state.possession =
-      "home";
+  for (const p of players) {
+    const d =
+      p.mesh.position.distanceTo(
+        ball.position
+      );
+
+    if (d < best) {
+      best = d;
+      closest = p;
+    }
+  }
+
+  if (closest) {
+    giveBall(closest);
 
     resetShotClock();
 
-    showMessage(
-      "REBOUND!"
-    );
+    if (
+      closest.team === "home"
+    ) {
+      showMessage(
+        "REBOUND!"
+      );
 
-    statusEl.textContent =
-      "HOME BALL";
-  } else {
-    cpuGetsBall();
+      statusEl.textContent =
+        "HOME BALL";
+    } else {
+      showMessage(
+        "AWAY REBOUND"
+      );
+
+      statusEl.textContent =
+        "AWAY BALL";
+
+      setTimeout(
+        cpuPossession,
+        650
+      );
+    }
   }
 }
 
-// ============================================================
+// ---------------------------------------------------------
 // CPU OFFENSE
-// ============================================================
+// ---------------------------------------------------------
 
-function cpuGetsBall() {
-  state.ballOwner =
-    "cpu";
+function cpuCheckInbound() {
+  const cpu =
+    awayPG;
 
-  state.ballState =
-    "held";
+  giveBall(cpu);
 
-  state.possession =
-    "away";
-
-  resetShotClock();
+  cpu.mesh.position.set(
+    0,
+    0,
+    7
+  );
 
   statusEl.textContent =
     "AWAY BALL";
 
-  showMessage(
-    "AWAY BALL"
-  );
-
   setTimeout(
-    () => {
-      if (
-        state.running &&
-        state.ballOwner ===
-          "cpu"
-      ) {
-        cpuShoot();
-      }
-    },
-    900
+    cpuPossession,
+    600
   );
 }
 
-function cpuShoot() {
+function cpuPossession() {
   if (
-    state.ballOwner !==
-    "cpu"
-  ) {
+    !state.running ||
+    state.ended ||
+    state.possession !== "away"
+  ) return;
+
+  const owner =
+    getBallPlayer();
+
+  if (!owner) {
+    giveBall(awayPG);
     return;
   }
 
+  if (
+    owner.team !== "away"
+  ) return;
+
+  // Move toward attack.
+  owner.target.set(
+    0,
+    0,
+    -7
+  );
+
+  moveAIPlayer(
+    owner,
+    owner.target,
+    .35,
+    3.8
+  );
+
+  const distance =
+    owner.mesh.position.distanceTo(
+      homeHoop
+    );
+
+  if (
+    distance < 10 ||
+    Math.random() < .03
+  ) {
+    cpuShoot(owner);
+  } else {
+    setTimeout(
+      cpuPossession,
+      300
+    );
+  }
+}
+
+function cpuShoot(owner) {
+  if (
+    !owner ||
+    owner.team !== "away"
+  ) return;
+
   const target =
-    homeHoop.position;
+    homeHoop.clone();
 
   const start =
     ball.position.clone();
@@ -2492,125 +2403,82 @@ function cpuShoot() {
       target
     );
 
-  const made =
-    Math.random() <
-    (
-      .42 +
-      Math.min(
-        .25,
-        distance *
-          .01
-      )
-    );
+  const three =
+    distance > 6.75;
 
-  state.ballState =
-    "flying";
+  let chance =
+    .42;
 
-  state.ballOwner =
-    null;
+  if (!three)
+    chance += .1;
 
-  state._cpuMade =
-    made;
-
-  state._cpuThree =
-    distance >
-    6.75;
-
-  state.shotTime = 0;
-
-  state.shotDuration =
-    THREE.MathUtils.clamp(
-      .8 +
-        distance * .045,
-      .8,
-      1.35
-    );
-
-  const targetPoint =
-    target.clone();
-
-  if (!made) {
-    targetPoint.x +=
-      (
-        Math.random() -
-        .5
-      ) * .9;
-
-    targetPoint.z +=
-      (
-        Math.random() -
-        .5
-      ) * .9;
+  if (
+    Math.random() < .08
+  ) {
+    chance += .15;
   }
 
-  const horizontal =
-    new THREE.Vector3(
-      targetPoint.x -
-        start.x,
-      0,
-      targetPoint.z -
-        start.z
-    );
+  const made =
+    Math.random() < chance;
 
-  horizontal.divideScalar(
-    state.shotDuration
-  );
+  if (!made) {
+    target.x +=
+      (Math.random() - .5) *
+      .9;
 
-  shotVelocity.copy(
-    horizontal
-  );
+    target.z +=
+      (Math.random() - .5) *
+      .9;
+  }
 
-  const gravity =
-    13;
+  owner.hasBall = false;
 
-  shotVelocity.y =
-    (
-      targetPoint.y -
-      start.y +
-      .5 *
-        gravity *
-        state.shotDuration *
-        state.shotDuration
-    ) /
-    state.shotDuration;
-}
+  state.ballOwner = null;
+  state.ballState = "flying";
 
-// ============================================================
-// POSSESSION RESET
-// ============================================================
-
-function resetPossession() {
-  state.ballOwner =
-    "player";
-
-  state.ballState =
-    "held";
-
-  state.possession =
-    "home";
-
-  state.shotClock =
-    SHOT_CLOCK_MAX;
-
-  ball.position.set(
-    player.mesh.position.x,
-    1.3,
-    player.mesh.position.z
-  );
-
-  updatePossessionUI();
+  state.shot = {
+    type: "cpuShot",
+    time: 0,
+    duration:
+      THREE.MathUtils.clamp(
+        .8 +
+        distance * .04,
+        .8,
+        1.3
+      ),
+    start,
+    target,
+    made,
+    three
+  };
 
   statusEl.textContent =
-    "HOME BALL";
+    "AWAY SHOT";
 }
 
-// ============================================================
-// STEAL
-// ============================================================
+// Modify CPU shot result by intercepting finishShot logic.
+const originalFinishShot =
+  finishShot;
 
-function triggerSteal() {
+// ---------------------------------------------------------
+// CPU STEAL
+// ---------------------------------------------------------
+
+function stealFromHome(defender) {
+  const owner =
+    getBallPlayer();
+
+  if (
+    !owner ||
+    owner.team !== "home"
+  ) return;
+
+  owner.hasBall = false;
+
+  defender.hasBall = true;
+
   state.ballOwner =
-    "cpu";
+    defender;
 
   state.ballState =
     "held";
@@ -2620,158 +2488,159 @@ function triggerSteal() {
 
   resetShotClock();
 
-  crowdReact(
-    "steal",
-    .22
+  state.crowdTarget =
+    Math.min(
+      1,
+      state.crowdTarget +
+      .2
+    );
+
+  showMessage(
+    "STEAL!"
   );
 
-  crowdSound(
+  sound(.55);
+
+  setTimeout(
+    cpuPossession,
+    450
+  );
+}
+
+// ---------------------------------------------------------
+// DRIBBLE MOVES
+// ---------------------------------------------------------
+
+function crossover() {
+  if (
+    getBallPlayer() !== homePG
+  ) return;
+
+  homePG.mesh.rotation.y +=
+    Math.PI * .7;
+
+  homePG.velocity.multiplyScalar(
+    .4
+  );
+
+  showMessage(
+    "CROSSOVER!"
+  );
+
+  state.crowdTarget =
+    Math.min(
+      1,
+      state.crowdTarget +
+      .08
+    );
+
+  sound(.25);
+}
+
+function behindBack() {
+  if (
+    getBallPlayer() !== homePG
+  ) return;
+
+  homePG.mesh.rotation.y +=
+    Math.PI * .95;
+
+  homePG.velocity.multiplyScalar(
     .45
   );
 
   showMessage(
-    "STOLEN!"
+    "BEHIND THE BACK!"
   );
+
+  state.crowdTarget =
+    Math.min(
+      1,
+      state.crowdTarget +
+      .1
+    );
+
+  sound(.3);
+}
+
+// ---------------------------------------------------------
+// RESET
+// ---------------------------------------------------------
+
+function resetPossession() {
+  players.forEach(
+    p => p.hasBall = false
+  );
+
+  homePG.mesh.position.set(
+    0,
+    0,
+    7
+  );
+
+  giveBall(homePG);
+
+  state.shotClock =
+    SHOT_CLOCK;
+
+  state.ballState =
+    "held";
+
+  state.shot = null;
+
+  updatePossession();
 
   statusEl.textContent =
-    "TURNOVER";
-
-  setTimeout(
-    () => {
-      if (
-        state.running &&
-        state.ballOwner ===
-          "cpu"
-      ) {
-        cpuShoot();
-      }
-    },
-    700
-  );
+    "HOME BALL";
 }
 
-// ============================================================
-// SHOT CLOCK
-// ============================================================
-
-function resetShotClock() {
-  state.shotClock =
-    SHOT_CLOCK_MAX;
+function updatePossession() {
+  possessionEl.textContent =
+    state.possession === "home"
+      ? "HOME BALL"
+      : "AWAY BALL";
 }
 
-function updateShotClock(
-  dt
-) {
+// ---------------------------------------------------------
+// CLOCK
+// ---------------------------------------------------------
+
+function updateClocks(dt) {
   if (
     !state.running ||
     state.paused ||
     state.ended
-  ) {
-    return;
-  }
+  ) return;
 
-  state.shotClock -=
-    dt;
+  state.gameTime -= dt;
+
+  state.shotClock -= dt;
 
   if (
-    state.shotClock <=
-    0
+    state.shotClock <= 0
   ) {
     state.shotClock = 0;
 
+    showMessage(
+      "SHOT CLOCK VIOLATION!"
+    );
+
     if (
-      state.possession ===
-      "home"
+      state.possession === "home"
     ) {
-      showMessage(
-        "SHOT CLOCK!"
-      );
-
-      crowdReact(
-        "turnover",
-        -.1
-      );
-
-      cpuGetsBall();
+      cpuCheckInbound();
     } else {
-      showMessage(
-        "SHOT CLOCK!"
-      );
-
       resetPossession();
     }
   }
-}
-
-// ============================================================
-// GAME CLOCK
-// ============================================================
-
-function updateGameClock(
-  dt
-) {
-  if (
-    !state.running ||
-    state.paused ||
-    state.ended
-  ) {
-    return;
-  }
-
-  state.gameTime -=
-    dt;
 
   if (
-    state.gameTime <=
-    60 &&
-    state.gameTime >
-      59
-  ) {
-    crowdReact(
-      "clutch",
-      .25
-    );
-  }
-
-  if (
-    state.gameTime <=
-    30 &&
-    state.gameTime >
-      29
-  ) {
-    crowdReact(
-      "clutch",
-      .4
-    );
-  }
-
-  if (
-    state.gameTime <=
-    10 &&
-    state.gameTime >
-      9
-  ) {
-    crowdReact(
-      "clutch",
-      .6
-    );
-  }
-
-  if (
-    state.gameTime <=
-    0
+    state.gameTime <= 0
   ) {
     state.gameTime = 0;
-
     endGame();
-
-    return;
   }
 
-  updateClockUI();
-}
-
-function updateClockUI() {
   const total =
     Math.ceil(
       state.gameTime
@@ -2788,385 +2657,235 @@ function updateClockUI() {
   gameClockEl.textContent =
     `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 
-  const shot =
-    Math.max(
-      0,
-      Math.ceil(
+  shotClockEl.textContent =
+    Math.ceil(
+      Math.max(
+        0,
         state.shotClock
       )
     );
 
-  shotClockEl.textContent =
-    shot;
+  shotClockEl.style.color =
+    state.shotClock <= 5
+      ? "#ff453a"
+      : "#fff";
+
+  // Clutch.
+  if (
+    state.gameTime <= 60
+  ) {
+    state.crowdTarget =
+      Math.max(
+        state.crowdTarget,
+        .55
+      );
+  }
 
   if (
-    shot <= 5
+    state.gameTime <= 10
   ) {
-    shotClockEl.style.color =
-      "#ff453a";
-  } else {
-    shotClockEl.style.color =
-      "#fff";
+    state.standingTarget = 1;
+    state.crowdTarget = 1;
   }
 }
 
-// ============================================================
-// SCOREBOARD
-// ============================================================
+// ---------------------------------------------------------
+// SCORE
+// ---------------------------------------------------------
 
-function updateScoreboard() {
+function updateScore() {
   homeScoreEl.textContent =
-    state.homeScore;
+    state.home;
 
   awayScoreEl.textContent =
-    state.awayScore;
+    state.away;
 
-  updatePossessionUI();
-}
-
-function updatePossessionUI() {
-  possessionEl.textContent =
-    state.possession ===
-    "home"
-      ? "HOME BALL"
-      : "AWAY BALL";
-}
-
-// ============================================================
-// COMEBACK SYSTEM
-// ============================================================
-
-function checkComeback() {
   const margin =
-    state.homeScore -
-    state.awayScore;
+    state.home -
+    state.away;
 
-  const previous =
-    state.scoreMarginHistory;
-
+  // Comeback from 20 down.
   if (
-    previous <=
-      -20 &&
-    margin >=
-      -10
+    state.lastMargin <= -20 &&
+    margin >= -10
   ) {
-    crowdReact(
-      "comeback",
-      .5
-    );
-
     showMessage(
       "THE COMEBACK IS ON!"
     );
-  } else if (
-    previous <=
-      -10 &&
-    margin >=
-      -5
-  ) {
-    crowdReact(
-      "comeback",
-      .3
-    );
-  } else if (
-    previous <=
-      -5 &&
-    margin >=
-      0
-  ) {
-    crowdReact(
-      "comeback",
-      .4
-    );
 
-    showMessage(
-      "TIE GAME!"
-    );
+    state.crowdTarget = 1;
+    sound(1);
   }
 
-  state.scoreMarginHistory =
-    margin;
+  if (
+    state.lastMargin <= -10 &&
+    margin >= -5
+  ) {
+    showMessage(
+      "COMEBACK!"
+    );
+
+    state.crowdTarget =
+      Math.min(
+        1,
+        state.crowdTarget + .3
+      );
+  }
+
+  if (
+    Math.abs(margin) <= 3 &&
+    state.gameTime <= 60
+  ) {
+    state.crowdTarget = 1;
+    state.standingTarget = 1;
+  }
+
+  state.lastMargin = margin;
 }
 
-// ============================================================
-// CROWD REACTION SYSTEM
-// ============================================================
+// ---------------------------------------------------------
+// CROWD
+// ---------------------------------------------------------
 
-const normalDefenseChants = [
+const normalDefense = [
   "DEFENSE! DEFENSE!",
   "LET'S GO DEFENSE!",
   "LOCK HIM UP!",
-  "CLAP! CLAP! CLAP-CLAP-CLAP!",
-  "DE-FENSE! DE-FENSE!"
+  "DE-FENSE! DE-FENSE!",
+  "CLAP! CLAP! CLAP!"
 ];
 
-const clutchDefenseChants = [
+const clutchDefense = [
   "WE WANT DEFENSE!",
   "STOP! STOP! STOP!",
   "DEFENSE! DEFENSE! DEFENSE!"
 ];
 
-const reactionPool = [
-  "CHEER!",
-  "ROAR!",
-  "LET'S GO!",
-  "COME ON!",
+const reactions = [
   "OH!",
   "WOW!",
   "YEAHHH!",
-  "CLAP!",
+  "LET'S GO!",
+  "COME ON!",
   "GET LOUD!",
+  "BIG TIME!",
   "MVP!",
-  "THREE!",
-  "BIG SHOT!",
   "WHAT A MOVE!",
-  "OH MY!",
-  "LET'S GOOOO!",
-  "CLUTCH!",
-  "ICE COLD!",
-  "HE'S ON FIRE!",
-  "COME BACK!",
-  "WE BELIEVE!",
-  "KEEP GOING!",
-  "THAT'S IT!",
-  "GO HOME TEAM!",
-  "MAKE SOME NOISE!",
-  "ONE MORE!",
-  "COME ON NOW!",
   "NO WAY!",
   "UNBELIEVABLE!",
-  "WHAT A PLAY!",
-  "BIG TIME!"
+  "CLUTCH!",
+  "MAKE SOME NOISE!",
+  "ONE MORE!",
+  "COME BACK!",
+  "WE BELIEVE!",
+  "HE'S ON FIRE!",
+  "THAT'S IT!",
+  "WHAT A PLAY!"
 ];
 
-function crowdReact(
-  type,
-  amount
-) {
-  let boost =
-    amount ?? .2;
-
-  state.crowdTarget =
-    THREE.MathUtils.clamp(
-      state.crowdTarget +
-        boost,
-      0,
-      1
-    );
-
-  crowdSound(
-    Math.min(
-      1,
-      Math.abs(boost) +
-        .25
-    )
-  );
-
-  if (
-    type ===
-    "clutch"
-  ) {
-    showMessage(
-      "CLUTCH TIME!"
-    );
-  }
-
-  if (
-    type ===
-    "steal"
-  ) {
-    showMessage(
-      "STEAL!"
-    );
-  }
-
-  if (
-    type ===
-    "three"
-  ) {
-    showMessage(
-      "THREE!!!"
-    );
-  }
-
-  if (
-    type ===
-    "comeback"
-  ) {
-    showMessage(
-      "COMEBACK!"
-    );
-  }
-
-  if (
-    type ===
-    "dribble"
-  ) {
-    showMessage(
-      "OHHHH!"
-    );
-  }
-}
-
-function updateCrowd(
-  dt
-) {
+function updateCrowd(dt) {
   if (
     !state.running ||
     state.paused
-  ) {
-    return;
-  }
+  ) return;
 
   const margin =
-    state.homeScore -
-    state.awayScore;
+    state.home -
+    state.away;
 
-  let target =
-    .18;
-
-  // Home lead.
+  let target = .18;
 
   if (
-    margin > 0
+    Math.abs(margin) <= 5
   ) {
-    target +=
-      Math.min(
-        .25,
-        margin *
-          .025
-      );
+    target += .2;
   }
-
-  // Close game.
 
   if (
-    Math.abs(margin) <=
-    5
+    state.gameTime <= 60
   ) {
-    target +=
-      .18;
+    target += .18;
   }
 
-  // Losing comeback.
+  if (
+    state.gameTime <= 30
+  ) {
+    target += .2;
+  }
+
+  if (
+    state.gameTime <= 10
+  ) {
+    target += .35;
+  }
 
   if (
     margin < 0
   ) {
-    target +=
-      Math.min(
-        .2,
-        Math.abs(margin) *
-          .012
-      );
-  }
-
-  // Late game.
-
-  if (
-    state.gameTime <=
-    60
-  ) {
-    target +=
-      .15;
-  }
-
-  if (
-    state.gameTime <=
-    30
-  ) {
-    target +=
-      .2;
-  }
-
-  if (
-    state.gameTime <=
-    10
-  ) {
-    target +=
-      .3;
+    target += Math.min(
+      .18,
+      Math.abs(margin) * .012
+    );
   }
 
   state.crowdTarget =
     THREE.MathUtils.clamp(
-      target,
+      Math.max(
+        state.crowdTarget,
+        target
+      ),
       0,
       1
     );
 
-  state.crowdIntensity =
-    THREE.MathUtils.lerp(
-      state.crowdIntensity,
-      state.crowdTarget,
-      dt * 1.4
+  state.crowd +=
+    (state.crowdTarget -
+      state.crowd) *
+    Math.min(
+      1,
+      dt * 1.7
     );
 
-  // Standing.
-
-  let standing =
-    0;
-
   if (
-    state.gameTime <=
-    60
+    state.gameTime <= 60 &&
+    Math.abs(margin) <= 3
   ) {
-    standing =
-      (60 -
-        state.gameTime) /
-      50;
+    state.standingTarget = 1;
+  } else if (
+    state.gameTime <= 10
+  ) {
+    state.standingTarget = 1;
+  } else {
+    state.standingTarget =
+      Math.max(
+        0,
+        (60 - state.gameTime) /
+        50
+      );
   }
 
-  if (
-    Math.abs(margin) <=
-      3 &&
-    state.gameTime <=
-      60
-  ) {
-    standing +=
-      .3;
-  }
+  state.standing +=
+    (state.standingTarget -
+      state.standing) *
+    dt * 2;
 
   if (
-    state.gameTime <=
-    10
-  ) {
-    standing = 1;
-  }
-
-  state.crowdTargetStanding =
-    THREE.MathUtils.clamp(
-      standing,
-      0,
-      1
-    );
-
-  state.crowdStanding =
-    THREE.MathUtils.lerp(
-      state.crowdStanding,
-      state.crowdTargetStanding,
-      dt * 2
-    );
-
-  const level =
-    state.crowdIntensity;
-
-  if (
-    level < .25
+    state.crowd < .3
   ) {
     crowdLevelEl.textContent =
       "CALM";
   } else if (
-    level < .45
+    state.crowd < .5
   ) {
     crowdLevelEl.textContent =
       "LOUD";
   } else if (
-    level < .7
+    state.crowd < .72
   ) {
     crowdLevelEl.textContent =
       "HYPED";
   } else if (
-    level < .9
+    state.crowd < .9
   ) {
     crowdLevelEl.textContent =
       "ROARING";
@@ -3175,139 +2894,122 @@ function updateCrowd(
       "INSANE";
   }
 
-  for (
-    const fan of crowd
-  ) {
+  const now =
+    performance.now();
+
+  for (const fan of fans) {
     const bounce =
       Math.max(
         0,
         Math.sin(
-          performance.now() *
-            .003 *
-            fan.speed +
-            fan.phase
+          now * .003 *
+          fan.speed +
+          fan.phase
         )
       );
 
     const jump =
       bounce *
-      state.crowdIntensity *
-      .38;
+      state.crowd *
+      .4;
 
-    const standingHeight =
-      state.crowdStanding *
-      state.crowdIntensity *
-      .7;
+    const stand =
+      state.standing *
+      state.crowd *
+      .65;
 
     fan.group.position.y =
       fan.baseY +
       jump +
-      standingHeight;
+      stand;
 
     fan.body.rotation.z =
       Math.sin(
-        performance.now() *
-          .002 *
-          fan.speed +
-          fan.phase
+        now * .002 *
+        fan.speed +
+        fan.phase
       ) *
-      state.crowdIntensity *
+      state.crowd *
       .2;
   }
 
-  if (
-    state.chantCooldown >
-    0
-  ) {
-    state.chantCooldown -=
-      dt;
-  }
-
-  // Defense chants only when away team has the ball.
+  // Defense chants.
+  state.chantTimer -= dt;
 
   if (
-    state.possession ===
-      "away" &&
-    state.chantCooldown <=
-      0 &&
-    state.crowdIntensity >
-      .45
+    state.possession === "away" &&
+    state.chantTimer <= 0 &&
+    state.crowd > .5
   ) {
-    const close =
-      Math.abs(margin) <=
-      5;
-
     const clutch =
-      close &&
-      state.gameTime <=
-        60;
-
-    const chance =
-      clutch
-        ? .055
-        : .025;
+      state.gameTime <= 60 &&
+      Math.abs(margin) <= 5;
 
     if (
       Math.random() <
-      dt * chance
+      dt *
+      (clutch ? .075 : .035)
     ) {
-      triggerDefenseChant(
-        clutch
-      );
+      defenseChant(clutch);
     }
   }
 }
 
-// ============================================================
-// DEFENSE CHANTS
-// ============================================================
-
-function triggerDefenseChant(
-  clutch
-) {
+function defenseChant(clutch) {
   const list =
     clutch
-      ? clutchDefenseChants
-      : normalDefenseChants;
+      ? clutchDefense
+      : normalDefense;
 
   const chant =
     list[
       Math.floor(
         Math.random() *
-          list.length
+        list.length
       )
     ];
 
-  showMessage(
-    chant
-  );
+  showMessage(chant);
 
   state.crowdTarget =
     Math.min(
       1,
-      state.crowdTarget +
-        .25
+      state.crowdTarget + .25
     );
 
-  state.chantCooldown =
-    clutch
-      ? 5
-      : 8;
+  state.chantTimer =
+    clutch ? 5 : 8;
 
-  crowdSound(
-    clutch
-      ? .95
-      : .55
+  sound(
+    clutch ? .95 : .6
   );
 }
 
-// ============================================================
-// MESSAGE
-// ============================================================
+// ---------------------------------------------------------
+// RANDOM CROWD REACTION
+// ---------------------------------------------------------
 
-function showMessage(
-  text
-) {
+function randomCrowdReaction() {
+  if (
+    Math.random() > .3
+  ) return;
+
+  const text =
+    reactions[
+      Math.floor(
+        Math.random() *
+        reactions.length
+      )
+    ];
+
+  showMessage(text);
+}
+
+// ---------------------------------------------------------
+// MESSAGE
+// ---------------------------------------------------------
+
+function showMessage(text) {
   messageEl.textContent =
     text;
 
@@ -3315,26 +3017,19 @@ function showMessage(
     "hidden"
   );
 
-  state.messageTime =
-    1.25;
+  state.messageTimer =
+    1.2;
 }
 
-function updateMessage(
-  dt
-) {
+function updateMessage(dt) {
   if (
-    state.messageTime <=
-    0
-  ) {
-    return;
-  }
+    state.messageTimer <= 0
+  ) return;
 
-  state.messageTime -=
-    dt;
+  state.messageTimer -= dt;
 
   if (
-    state.messageTime <=
-    0
+    state.messageTimer <= 0
   ) {
     messageEl.classList.add(
       "hidden"
@@ -3342,44 +3037,41 @@ function updateMessage(
   }
 }
 
-// ============================================================
+// ---------------------------------------------------------
 // PAUSE
-// ============================================================
+// ---------------------------------------------------------
 
 function togglePause() {
   if (
     !state.running ||
     state.ended
-  ) {
-    return;
-  }
+  ) return;
 
   state.paused =
     !state.paused;
 
-  pauseOverlay.classList.toggle(
+  pauseScreen.classList.toggle(
     "active",
     state.paused
   );
 }
 
-// ============================================================
+// ---------------------------------------------------------
 // GAME OVER
-// ============================================================
+// ---------------------------------------------------------
 
 function endGame() {
-  state.running =
-    false;
-
-  state.ended =
-    true;
+  state.running = false;
+  state.ended = true;
 
   gameClockEl.textContent =
     "00:00";
 
+  state.crowdTarget = 1;
+  state.standingTarget = 1;
+
   if (
-    state.homeScore >
-    state.awayScore
+    state.home > state.away
   ) {
     finalTitle.textContent =
       "YOU WIN!";
@@ -3387,34 +3079,27 @@ function endGame() {
     showMessage(
       "HOME WINS!"
     );
-
-    state.crowdTarget =
-      1;
-
-    crowdSound(
-      1
-    );
   } else if (
-    state.homeScore <
-    state.awayScore
+    state.home < state.away
   ) {
     finalTitle.textContent =
       "YOU LOSE";
-
   } else {
     finalTitle.textContent =
       "TIE GAME";
   }
 
   finalScore.textContent =
-    `${state.homeScore} - ${state.awayScore}`;
+    `${state.home} - ${state.away}`;
 
   gameOver.classList.remove(
     "hidden"
   );
+
+  sound(1);
 }
 
-restartButton.addEventListener(
+restartButton?.addEventListener(
   "click",
   () => {
     gameOver.classList.add(
@@ -3425,149 +3110,84 @@ restartButton.addEventListener(
   }
 );
 
-// ============================================================
+// ---------------------------------------------------------
 // CAMERA
-// ============================================================
+// ---------------------------------------------------------
 
-function updateCamera(
-  dt
-) {
+function updateCamera(dt) {
+  const p =
+    getControlledPlayer();
+
   const desired =
     new THREE.Vector3(
-      player.mesh.position.x,
-      9.5,
-      player.mesh.position.z +
-        12
+      p.mesh.position.x,
+      9.2,
+      p.mesh.position.z + 11.5
     );
 
   camera.position.lerp(
     desired,
     1 -
-      Math.pow(
-        .001,
-        dt
-      )
+    Math.pow(.001, dt)
   );
 
   camera.lookAt(
-    player.mesh.position.x,
-    1,
-    player.mesh.position.z -
-      2
+    p.mesh.position.x,
+    1.1,
+    p.mesh.position.z - 2
   );
 }
 
-// ============================================================
-// BALL OWNER UPDATE
-// ============================================================
-
-function updateBallOwner() {
-  if (
-    state.ballState !==
-    "held"
-  ) {
-    return;
-  }
-
-  if (
-    state.ballOwner ===
-    "player"
-  ) {
-    updateDribble(
-      0
-    );
-  }
-
-  if (
-    state.ballOwner ===
-    "cpu"
-  ) {
-    ball.position.set(
-      defender.mesh.position.x,
-      1.15,
-      defender.mesh.position.z
-    );
-  }
-}
-
-// ============================================================
-// PLAYER COOLDOWNS
-// ============================================================
-
-function updateCooldowns(
-  dt
-) {
-  player.moveCooldown =
-    Math.max(
-      0,
-      player.moveCooldown -
-        dt
-    );
-}
-
-// ============================================================
+// ---------------------------------------------------------
 // RESIZE
-// ============================================================
+// ---------------------------------------------------------
 
 window.addEventListener(
   "resize",
   () => {
     camera.aspect =
-      window.innerWidth /
-      window.innerHeight;
+      innerWidth /
+      innerHeight;
 
     camera.updateProjectionMatrix();
 
     renderer.setSize(
-      window.innerWidth,
-      window.innerHeight
+      innerWidth,
+      innerHeight
     );
   }
 );
 
-// ============================================================
+// ---------------------------------------------------------
 // MAIN LOOP
-// ============================================================
+// ---------------------------------------------------------
 
-function animate(
-  now = performance.now()
-) {
+function animate() {
   requestAnimationFrame(
     animate
   );
 
   const dt =
     Math.min(
-      (now -
-        state.lastTime) /
-        1000,
+      clock.getDelta(),
       .05
     );
 
-  state.lastTime =
-    now;
+  updateControlledPlayer(dt);
 
-  updatePlayer(dt);
+  updateHomeAI(dt);
 
-  updateDefense(dt);
+  updateAwayAI(dt);
 
-  updateCooldowns(dt);
+  updateBall(dt);
 
-  updateBallOwner();
+  updateCharge(dt);
 
-  updateShotCharge(dt);
-
-  updateShot(dt);
-
-  updateShotClock(dt);
-
-  updateGameClock(dt);
+  updateClocks(dt);
 
   updateCrowd(dt);
 
   updateMessage(dt);
-
-  updateClockUI();
 
   updateCamera(dt);
 
@@ -3577,28 +3197,35 @@ function animate(
   );
 }
 
-// ============================================================
-// INITIALIZATION
-// ============================================================
+// ---------------------------------------------------------
+// LOADING
+// ---------------------------------------------------------
 
 function initialize() {
-  loading.style.display =
-    "none";
+  if (loading) {
+    loading.style.display =
+      "none";
+  }
 
-  gameOver.classList.add(
+  gameOver?.classList.add(
     "hidden"
   );
 
-  shotMeter.classList.add(
+  shotMeter?.classList.add(
     "hidden"
   );
 
   menu.style.display =
     "flex";
 
-  updateClockUI();
+  homeScoreEl.textContent =
+    "0";
 
-  resetPossession();
+  awayScoreEl.textContent =
+    "0";
+
+  gameClockEl.textContent =
+    "02:00";
 
   animate();
 }
